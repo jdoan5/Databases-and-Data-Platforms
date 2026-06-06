@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/01_schema.sql" value="0e9343d2-010f-47d8-aed6-431767525f94" />
+    <file url="file://$PROJECT_DIR$/02_seed_data.sql" value="0e9343d2-010f-47d8-aed6-431767525f94" />
+    <file url="file://$PROJECT_DIR$/03_queries.sql" value="0e9343d2-010f-47d8-aed6-431767525f94" />
+    <file url="file://$PROJECT_DIR$/04_views.sql" value="0e9343d2-010f-47d8-aed6-431767525f94" />
+    <file url="file://$PROJECT_DIR$/05_triggers.sql" value="0e9343d2-010f-47d8-aed6-431767525f94" />
+  </component>
+</project>

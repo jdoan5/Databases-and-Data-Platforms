@@ -43,12 +43,15 @@ a full round of numbers before it was noticed — Q04's baseline read 2.1 ms
 instead of 40.6 ms, understating its own improvement by 19x. `make reset` runs
 `init` first, and `01_schema.sql` opens with `DROP TABLE ... CASCADE`.
 
-Everything above has been run end to end on Postgres 17.10 / arm64. Stages 0–3
+Everything above has been run end to end on Postgres 17.10 / arm64. Stages 0–4
 and 7 are complete: all four acceptance gates pass, ten queries benchmark at a
 coefficient of variation under 4%, the regression gate is armed with committed
 baselines, and `make audit` reproduces all three schema defects. Stage 3 results
 are in **[STAGE3-RESULTS.md](STAGE3-RESULTS.md)** — three queries 12–17x faster,
-two measurably worse, and two methodology bugs found along the way.
+two measurably worse, and two methodology bugs found along the way. Stage 4 is
+the invoice: **[STAGE4-RESULTS.md](STAGE4-RESULTS.md)** — write amplification in
+time and WAL bytes, extended statistics that fixed a 6x estimate error and
+changed nothing, and a 34 MB index that Stage 3 silently made redundant.
 
 ---
 
@@ -71,9 +74,10 @@ statistics nothing to bite on. Two skews:
   `0.05 ^ (1/5) = 0.549`; check the arithmetic before changing it.
 - A product-to-warehouse correlation. Each product ships from a home warehouse
   85% of the time, so `product_id` and `warehouse_id` are correlated by
-  construction. The planner assumes independence and underestimates Q04 by
-  roughly 6x — which is what makes the Stage 4 `CREATE STATISTICS` fix
-  measurable rather than theoretical.
+  construction. The planner assumes independence and underestimates by 6.1×
+  (7,727 estimated against 46,917 actual). Stage 4 fixes that estimate with
+  `CREATE STATISTICS` and finds it changes no plan and no runtime — which is a
+  more useful result than a win, and not one you can get without the skew.
 
 **Physical ordering by `created_at`.** The `ORDER BY` at the end of the insert
 looks like a pointless flourish until Stage 3. `pg_stats.correlation` lands near
@@ -210,7 +214,7 @@ subscriptions to PyCharm Pro on 2026-09-01.
 - [x] **1** — 5M rows, fixed seed, deliberate skew, physical ordering
 - [x] **2** — baseline harness, round-robin iterations, EXPLAIN-sourced timings
 - [x] **3** — indexing one change at a time: composite vs. covering, partial, BRIN vs. B-tree — **[results](STAGE3-RESULTS.md)**
-- [ ] **4** — when the planner is right and you are wrong: write amplification, `CREATE STATISTICS`
+- [x] **4** — when the planner is right and you are wrong: write amplification, `CREATE STATISTICS`, the index audit — **[results](STAGE4-RESULTS.md)**
 - [ ] **5** — monthly range partitions, including the query it makes slower
 - [ ] **6** — `v_stock_valuation` as a view vs. a matview: latency against staleness
 - [x] **7** — the regression gate (harness in place; capture baselines to arm it)

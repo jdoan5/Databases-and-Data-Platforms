@@ -28,7 +28,8 @@ PSQL := $(DC) exec -T db psql -U postgres -d inventory -X -v ON_ERROR_STOP=1
 PY := $(shell test -x .venv/bin/python && echo .venv/bin/python || echo python3)
 
 .PHONY: help up down nuke wait init load check bench baseline compare report \
-        audit psql analyze indexes stats clean-results venv gate stage3 reset \
+        audit psql analyze indexes stats clean-results venv gate stage3 reset apply-stage3 \
+        stage4 s4a-stats s4b-writes s4c-audit s4d-cleanup \
         s3a-composite s3a-covering-dirty s3a-covering s3b-partial s3b-denorm s3c-brin s3c-brin-only s3d-revert
 
 help:
@@ -103,6 +104,9 @@ report: ## markdown table for STAGE
 compare: ## before/after table (BEFORE=baseline AFTER=s3_covering)
 	@$(PY) bench/report.py --before $(BEFORE) --after $(AFTER)
 
+apply-stage3: ## jump straight to Stage 3's end state (no intermediate benchmarks)
+	$(PSQL) -f /sql/39_apply_stage3.sql
+
 # --- Stage 3: one change at a time, each with its own benchmark run ---------
 # Never two at once. Each target applies exactly one migration and then
 # measures, so every number in the writeup has a single cause.
@@ -140,6 +144,24 @@ s3d-revert: ## 3d the verdict: restore the B-tree, drop the unused BRIN
 	$(MAKE) bench STAGE=s3_final
 
 stage3: s3a-composite s3a-covering-dirty s3a-covering s3b-partial s3b-denorm s3c-brin s3c-brin-only s3d-revert ## run all of Stage 3 in order
+
+# --- Stage 4: the bill for Stage 3 ------------------------------------------
+
+s4a-stats: ## 4a extended statistics on the correlated pair
+	$(PSQL) -f /sql/40_extended_stats.sql
+	$(MAKE) bench STAGE=s4a_extstats
+
+s4b-writes: ## 4b write amplification — time and WAL bytes per insert
+	$(PSQL) -f /sql/41_write_amplification.sql
+
+s4c-audit: ## 4c which indexes are never used, and what they cost
+	$(PSQL) -f /sql/42_index_audit.sql
+
+s4d-cleanup: ## 4d drop the indexes Stage 3 superseded, and remeasure writes
+	$(PSQL) -f /sql/43_drop_superseded.sql
+	$(MAKE) bench STAGE=s4_cleaned
+
+stage4: s4a-stats s4b-writes s4c-audit s4d-cleanup ## all of Stage 4
 
 indexes: ## which indexes are actually being used, and what they cost
 	$(PSQL) -c "SELECT relname, indexrelname, idx_scan, \

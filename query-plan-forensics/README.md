@@ -43,9 +43,9 @@ a full round of numbers before it was noticed — Q04's baseline read 2.1 ms
 instead of 40.6 ms, understating its own improvement by 19x. `make reset` runs
 `init` first, and `01_schema.sql` opens with `DROP TABLE ... CASCADE`.
 
-Everything above has been run end to end on Postgres 17.10 / arm64. Stages 0–5
-and 7 are complete: all four acceptance gates pass, ten queries benchmark at a
-coefficient of variation under 4%, the regression gate is armed with committed
+Everything above has been run end to end on Postgres 17.10 / arm64. **All seven
+stages are complete**: all four acceptance gates pass, ten queries benchmark at
+a coefficient of variation under 4%, the regression gate is armed with committed
 baselines, and `make audit` reproduces all three schema defects. Stage 3 results
 are in **[STAGE3-RESULTS.md](STAGE3-RESULTS.md)** — three queries 12–17x faster,
 two measurably worse, and two methodology bugs found along the way. Stage 4 is
@@ -56,6 +56,9 @@ partitions the ledger by month and reverts it:
 **[STAGE5-RESULTS.md](STAGE5-RESULTS.md)** — two queries ~40% slower against a
 7.6% win on the one it was built for, a 105x faster data expiry that is the real
 reason to partition, and a false conclusion caught by an unstable baseline.
+Stage 6 materializes the valuation: **[STAGE6-RESULTS.md](STAGE6-RESULTS.md)** —
+5,118x faster reads, a break-even of 0.84 reads, and the finding that the
+compute cost is a rounding error so the entire decision is staleness.
 
 ---
 
@@ -221,11 +224,13 @@ subscriptions to PyCharm Pro on 2026-09-01.
 - [x] **3** — indexing one change at a time: composite vs. covering, partial, BRIN vs. B-tree — **[results](STAGE3-RESULTS.md)**
 - [x] **4** — when the planner is right and you are wrong: write amplification, `CREATE STATISTICS`, the index audit — **[results](STAGE4-RESULTS.md)**
 - [x] **5** — monthly range partitions, including the queries it makes slower — **[results](STAGE5-RESULTS.md)**
-- [ ] **6** — `v_stock_valuation` as a view vs. a matview: latency against staleness
+- [x] **6** — `v_stock_valuation` as a view vs. a matview: latency against staleness — **[results](STAGE6-RESULTS.md)**
 - [x] **7** — the regression gate (harness in place; capture baselines to arm it)
 
-Stages 5 and 6 are evening add-ons, each independently publishable. Ship 0–4 and
-7 first.
+Three of the five optimizations were reverted after measurement: the BRIN index
+(never chosen by the planner), the partitioning (two queries ~40% slower), and
+a 34 MB index Stage 3 silently made redundant. The materialized view is the one
+that survived.
 
 ## Honest limitations
 

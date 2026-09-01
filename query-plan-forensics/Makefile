@@ -31,6 +31,7 @@ PY := $(shell test -x .venv/bin/python && echo .venv/bin/python || echo python3)
         audit psql analyze indexes stats clean-results venv gate stage3 reset apply-stage3 \
         stage4 s4a-stats s4b-writes s4c-audit s4d-cleanup \
         stage5 s5-partition s5-ops s5-revert \
+        stage6 s6-matview s6-breakeven \
         s3a-composite s3a-covering-dirty s3a-covering s3b-partial s3b-denorm s3c-brin s3c-brin-only s3d-revert
 
 help:
@@ -178,6 +179,16 @@ s5-revert: ## 5c the verdict: revert partitioning, restore the flat table
 	$(MAKE) bench STAGE=s5_reverted
 
 stage5: s5-partition s5-ops s5-revert ## all of Stage 5
+
+# --- Stage 6: materialization ------------------------------------------------
+
+s6-matview: ## 6 materialized view: read latency vs staleness vs refresh cost
+	$(PSQL) -f /sql/60_matview.sql
+
+s6-breakeven: ## 6b at what read rate does the refresh pay for itself
+	$(PSQL) -f /sql/61_breakeven.sql
+
+stage6: s6-matview s6-breakeven ## all of Stage 6
 
 indexes: ## which indexes are actually being used, and what they cost
 	$(PSQL) -c "SELECT relname, indexrelname, idx_scan, \

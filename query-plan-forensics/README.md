@@ -1,5 +1,7 @@
 # Query Plan Forensics
 
+[![plan-gate](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/plan-gate.yml/badge.svg)](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/plan-gate.yml)
+
 Scale a real PostgreSQL inventory schema to five million rows with a fixed seed
 and deliberate skew, change one thing at a time, and measure it — composite vs.
 covering indexes, BRIN vs. B-tree, extended statistics, monthly range

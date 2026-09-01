@@ -1,0 +1,50 @@
+{
+  "query_id": "Q10",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      1,
+      "Aggregate",
+      null,
+      null
+    ],
+    [
+      2,
+      "Gather Merge",
+      null,
+      null
+    ],
+    [
+      3,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      4,
+      "Aggregate",
+      null,
+      null
+    ],
+    [
+      5,
+      "Seq Scan",
+      "stock_movements",
+      null
+    ]
+  ],
+  "required_indexes": [],
+  "root_total_cost": 10844.36,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 6,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 30997,
+  "buffers_tolerance_pct": 25
+}

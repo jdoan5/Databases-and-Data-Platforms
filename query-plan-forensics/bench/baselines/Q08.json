@@ -1,0 +1,82 @@
+{
+  "query_id": "Q08",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Limit",
+      null,
+      null
+    ],
+    [
+      1,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      2,
+      "Aggregate",
+      null,
+      null
+    ],
+    [
+      3,
+      "Nested Loop",
+      null,
+      null
+    ],
+    [
+      4,
+      "Gather Merge",
+      null,
+      null
+    ],
+    [
+      5,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      6,
+      "Hash Join",
+      null,
+      null
+    ],
+    [
+      7,
+      "Seq Scan",
+      "purchase_orders",
+      null
+    ],
+    [
+      7,
+      "Hash",
+      null,
+      null
+    ],
+    [
+      8,
+      "Seq Scan",
+      "suppliers",
+      null
+    ],
+    [
+      4,
+      "Index Scan",
+      "purchase_order_items",
+      "poi_unique_product_per_po"
+    ]
+  ],
+  "required_indexes": [
+    "poi_unique_product_per_po"
+  ],
+  "root_total_cost": 19378.19,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 20,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 188245,
+  "buffers_tolerance_pct": 25
+}

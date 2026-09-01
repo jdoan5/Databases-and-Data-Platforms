@@ -1,0 +1,52 @@
+{
+  "query_id": "Q07",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Incremental Sort",
+      null,
+      null
+    ],
+    [
+      1,
+      "WindowAgg",
+      null,
+      null
+    ],
+    [
+      2,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      3,
+      "Subquery Scan",
+      null,
+      null
+    ],
+    [
+      4,
+      "Aggregate",
+      null,
+      null
+    ],
+    [
+      5,
+      "Index Scan",
+      "stock_movements",
+      "idx_movements_created"
+    ]
+  ],
+  "required_indexes": [
+    "idx_movements_created"
+  ],
+  "root_total_cost": 11789.0,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 36927,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 13050,
+  "buffers_tolerance_pct": 25
+}

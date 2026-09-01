@@ -1,0 +1,74 @@
+{
+  "query_id": "Q01",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Limit",
+      null,
+      null
+    ],
+    [
+      1,
+      "Gather Merge",
+      null,
+      null
+    ],
+    [
+      2,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      3,
+      "Hash Join",
+      null,
+      null
+    ],
+    [
+      4,
+      "Hash Join",
+      null,
+      null
+    ],
+    [
+      5,
+      "Seq Scan",
+      "stock_levels",
+      null
+    ],
+    [
+      5,
+      "Hash",
+      null,
+      null
+    ],
+    [
+      6,
+      "Seq Scan",
+      "products",
+      null
+    ],
+    [
+      4,
+      "Hash",
+      null,
+      null
+    ],
+    [
+      5,
+      "Seq Scan",
+      "warehouses",
+      null
+    ]
+  ],
+  "required_indexes": [],
+  "root_total_cost": 11319.66,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 100,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 25270,
+  "buffers_tolerance_pct": 25
+}

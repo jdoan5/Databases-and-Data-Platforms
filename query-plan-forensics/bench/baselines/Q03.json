@@ -1,0 +1,66 @@
+{
+  "query_id": "Q03",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Limit",
+      null,
+      null
+    ],
+    [
+      1,
+      "Nested Loop",
+      null,
+      null
+    ],
+    [
+      2,
+      "Nested Loop",
+      null,
+      null
+    ],
+    [
+      3,
+      "Index Scan",
+      "stock_movements",
+      "idx_movements_created"
+    ],
+    [
+      3,
+      "Memoize",
+      null,
+      null
+    ],
+    [
+      4,
+      "Index Scan",
+      "products",
+      "products_pkey"
+    ],
+    [
+      2,
+      "Memoize",
+      null,
+      null
+    ],
+    [
+      3,
+      "Index Scan",
+      "warehouses",
+      "warehouses_pkey"
+    ]
+  ],
+  "required_indexes": [
+    "idx_movements_created",
+    "products_pkey",
+    "warehouses_pkey"
+  ],
+  "root_total_cost": 74.3,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 200,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 2547,
+  "buffers_tolerance_pct": 25
+}

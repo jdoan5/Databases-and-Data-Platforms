@@ -1,0 +1,34 @@
+{
+  "query_id": "Q05",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Aggregate",
+      null,
+      null
+    ],
+    [
+      1,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      2,
+      "Index Scan",
+      "stock_movements",
+      "idx_movements_created"
+    ]
+  ],
+  "required_indexes": [
+    "idx_movements_created"
+  ],
+  "root_total_cost": 2702.85,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 20395,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 841,
+  "buffers_tolerance_pct": 25
+}

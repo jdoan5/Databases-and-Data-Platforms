@@ -1,0 +1,75 @@
+# Every planner-relevant setting lives here, in git, rather than in a container
+# I tuned once and forgot. `make check` asserts that each one reports
+# source='command line' rather than 'default'.
+#
+# Pin the digest before you capture any baseline:
+#   docker pull postgres:17
+#   docker image inspect postgres:17 --format '{{index .RepoDigests 0}}'
+# then replace the image line below. A minor-version bump can change a plan, and
+# an unpinned image means a baseline captured today may not reproduce in March.
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: qpf-db
+    environment:
+      POSTGRES_PASSWORD: qpf
+      POSTGRES_DB: inventory
+      # Checksums are the ONE setting that cannot be turned on later without a
+      # re-initdb. wal_log_hints below is restart-only and can be changed any
+      # time; this cannot. Costs a few percent on write throughput and buys the
+      # option of ever doing pg_rewind or failover work off this volume.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "55432:5432"          # not 5432 — leaves any local Postgres alone
+    shm_size: 1gb             # the 64MB default starves parallel workers
+    volumes:
+      - qpf_pgdata:/var/lib/postgresql/data
+      - ./sql:/sql:ro
+      - ./bench:/bench:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4g
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_parallel_workers_per_gather=2
+      # JIT off on purpose. It fires above a cost threshold, adds 20-80ms of
+      # compile time that lands inside Execution Time, and is the single largest
+      # source of run-to-run variance in a laptop benchmark.
+      - -c
+      - jit=off
+      - -c
+      - track_io_timing=on
+      - -c
+      - default_statistics_target=500
+      - -c
+      - wal_log_hints=on
+      # wal_level stays at 'replica'. Logical decoding on this instance would
+      # mean a slot decoding all 5M inserts during the bulk load, which blows
+      # past max_slot_wal_keep_size before the load finishes. CDC work belongs
+      # in its own stack; this is a restart-time change when you need it.
+
+volumes:
+  qpf_pgdata:

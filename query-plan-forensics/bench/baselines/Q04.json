@@ -1,0 +1,59 @@
+{
+  "query_id": "Q04",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      1,
+      "Aggregate",
+      null,
+      null
+    ],
+    [
+      2,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      3,
+      "Bitmap Heap Scan",
+      "stock_movements",
+      null
+    ],
+    [
+      4,
+      "BitmapAnd",
+      null,
+      null
+    ],
+    [
+      5,
+      "Bitmap Index Scan",
+      null,
+      "idx_movements_product"
+    ],
+    [
+      5,
+      "Bitmap Index Scan",
+      null,
+      "idx_movements_warehouse"
+    ]
+  ],
+  "required_indexes": [
+    "idx_movements_product",
+    "idx_movements_warehouse"
+  ],
+  "root_total_cost": 1418.06,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 6,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 12898,
+  "buffers_tolerance_pct": 25
+}

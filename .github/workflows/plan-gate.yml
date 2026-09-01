@@ -1,0 +1,78 @@
+name: plan-gate
+
+# Fails a pull request when a query plan changes shape.
+#
+# Note what this job does NOT do: it never asserts on wall-clock time. A GitHub
+# runner's IO is nothing like a laptop's. It compares plan node types and
+# estimated cost, which are functions of the schema and the statistics and
+# therefore reproduce anywhere.
+
+on:
+  pull_request:
+    paths:
+      - "query-plan-forensics/**"
+      - ".github/workflows/plan-gate.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: query-plan-forensics
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pytest
+
+      # Reuse the same docker-compose.yml the laptop uses, run manually rather
+      # than as a GitHub Actions `services:` block. Service containers cannot
+      # take a custom `command`, and shared_preload_libraries and shared_buffers
+      # cannot be set per-session — so compose is the only way CI and local
+      # share one configuration.
+      - name: Start pinned Postgres 17
+        run: |
+          docker compose up -d
+          until docker compose exec -T db pg_isready -U postgres -d inventory; do
+            sleep 1
+          done
+
+      - name: Schema
+        run: make init
+
+      # PROFILE=small, and the baselines committed for it. Plan shapes can
+      # legitimately differ between 500k and 5M rows — that is a cost-based
+      # planner working correctly, not a regression. test_dataset_matches_
+      # baseline_profile catches a mismatch with a clear message.
+      - name: Load (deterministic seed, 500k movements)
+        run: make load PROFILE=small
+
+      - name: Acceptance gates
+        run: make check
+
+      - name: Benchmark
+        run: make bench STAGE=ci ITER=5
+
+      - name: Plan regression gate
+        run: make gate STAGE=ci
+
+      - name: Summary
+        if: always()
+        run: python3 bench/report.py --stage ci >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-ci
+          path: query-plan-forensics/bench/results/ci.json
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

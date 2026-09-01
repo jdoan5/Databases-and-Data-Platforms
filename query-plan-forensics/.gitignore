@@ -1,0 +1,12 @@
+.venv/
+.pytest_cache/
+bench/__pycache__/
+*.pyc
+.DS_Store
+
+# Local benchmark runs are disposable; bench/baselines/ IS the committed contract.
+bench/results/*.json
+
+# DataGrip keeps credentials here; the shared dataSources.xml is committed.
+.idea/dataSources.local.xml
+.idea/dataSources/

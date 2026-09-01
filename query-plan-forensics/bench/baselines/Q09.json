@@ -1,0 +1,40 @@
+{
+  "query_id": "Q09",
+  "pg_major": 17,
+  "movement_rows": 500000,
+  "plan_fingerprint": [
+    [
+      0,
+      "Limit",
+      null,
+      null
+    ],
+    [
+      1,
+      "Sort",
+      null,
+      null
+    ],
+    [
+      2,
+      "Bitmap Heap Scan",
+      "purchase_orders",
+      null
+    ],
+    [
+      3,
+      "Bitmap Index Scan",
+      null,
+      "idx_po_status"
+    ]
+  ],
+  "required_indexes": [
+    "idx_po_status"
+  ],
+  "root_total_cost": 4417.41,
+  "cost_tolerance_pct": 15,
+  "plan_rows": 200,
+  "rows_tolerance_factor": 2.0,
+  "total_buffers": 11099,
+  "buffers_tolerance_pct": 25
+}

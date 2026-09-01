@@ -30,6 +30,7 @@ PY := $(shell test -x .venv/bin/python && echo .venv/bin/python || echo python3)
 .PHONY: help up down nuke wait init load check bench baseline compare report \
         audit psql analyze indexes stats clean-results venv gate stage3 reset apply-stage3 \
         stage4 s4a-stats s4b-writes s4c-audit s4d-cleanup \
+        stage5 s5-partition s5-ops s5-revert \
         s3a-composite s3a-covering-dirty s3a-covering s3b-partial s3b-denorm s3c-brin s3c-brin-only s3d-revert
 
 help:
@@ -162,6 +163,21 @@ s4d-cleanup: ## 4d drop the indexes Stage 3 superseded, and remeasure writes
 	$(MAKE) bench STAGE=s4_cleaned
 
 stage4: s4a-stats s4b-writes s4c-audit s4d-cleanup ## all of Stage 4
+
+# --- Stage 5: partitioning, including the query it makes slower -------------
+
+s5-partition: ## 5 convert stock_movements to monthly range partitions
+	$(PSQL) -f /sql/50_partition.sql
+	$(MAKE) bench STAGE=s5_partitioned
+
+s5-ops: ## 5b operational overhead — DESTRUCTIVE, expires a month (reset after)
+	$(PSQL) -f /sql/51_partition_ops.sql
+
+s5-revert: ## 5c the verdict: revert partitioning, restore the flat table
+	$(PSQL) -f /sql/52_revert_partition.sql
+	$(MAKE) bench STAGE=s5_reverted
+
+stage5: s5-partition s5-ops s5-revert ## all of Stage 5
 
 indexes: ## which indexes are actually being used, and what they cost
 	$(PSQL) -c "SELECT relname, indexrelname, idx_scan, \

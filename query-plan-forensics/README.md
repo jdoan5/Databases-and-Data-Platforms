@@ -43,7 +43,7 @@ a full round of numbers before it was noticed — Q04's baseline read 2.1 ms
 instead of 40.6 ms, understating its own improvement by 19x. `make reset` runs
 `init` first, and `01_schema.sql` opens with `DROP TABLE ... CASCADE`.
 
-Everything above has been run end to end on Postgres 17.10 / arm64. Stages 0–4
+Everything above has been run end to end on Postgres 17.10 / arm64. Stages 0–5
 and 7 are complete: all four acceptance gates pass, ten queries benchmark at a
 coefficient of variation under 4%, the regression gate is armed with committed
 baselines, and `make audit` reproduces all three schema defects. Stage 3 results
@@ -51,7 +51,11 @@ are in **[STAGE3-RESULTS.md](STAGE3-RESULTS.md)** — three queries 12–17x fas
 two measurably worse, and two methodology bugs found along the way. Stage 4 is
 the invoice: **[STAGE4-RESULTS.md](STAGE4-RESULTS.md)** — write amplification in
 time and WAL bytes, extended statistics that fixed a 6x estimate error and
-changed nothing, and a 34 MB index that Stage 3 silently made redundant.
+changed nothing, and a 34 MB index that Stage 3 silently made redundant. Stage 5
+partitions the ledger by month and reverts it:
+**[STAGE5-RESULTS.md](STAGE5-RESULTS.md)** — two queries ~40% slower against a
+7.6% win on the one it was built for, a 105x faster data expiry that is the real
+reason to partition, and a false conclusion caught by an unstable baseline.
 
 ---
 
@@ -76,8 +80,9 @@ statistics nothing to bite on. Two skews:
   85% of the time, so `product_id` and `warehouse_id` are correlated by
   construction. The planner assumes independence and underestimates by 6.1×
   (7,727 estimated against 46,917 actual). Stage 4 fixes that estimate with
-  `CREATE STATISTICS` and finds it changes no plan and no runtime — which is a
-  more useful result than a win, and not one you can get without the skew.
+  `CREATE STATISTICS` and finds it changes no plan and no runtime on the queries
+  that *filter* on the pair — but Stage 5 found a 7.3% gain on Q07, which
+  *groups by* it. Neither result is available without the skew.
 
 **Physical ordering by `created_at`.** The `ORDER BY` at the end of the insert
 looks like a pointless flourish until Stage 3. `pg_stats.correlation` lands near
@@ -215,7 +220,7 @@ subscriptions to PyCharm Pro on 2026-09-01.
 - [x] **2** — baseline harness, round-robin iterations, EXPLAIN-sourced timings
 - [x] **3** — indexing one change at a time: composite vs. covering, partial, BRIN vs. B-tree — **[results](STAGE3-RESULTS.md)**
 - [x] **4** — when the planner is right and you are wrong: write amplification, `CREATE STATISTICS`, the index audit — **[results](STAGE4-RESULTS.md)**
-- [ ] **5** — monthly range partitions, including the query it makes slower
+- [x] **5** — monthly range partitions, including the queries it makes slower — **[results](STAGE5-RESULTS.md)**
 - [ ] **6** — `v_stock_valuation` as a view vs. a matview: latency against staleness
 - [x] **7** — the regression gate (harness in place; capture baselines to arm it)
 

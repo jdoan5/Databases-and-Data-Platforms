@@ -8,7 +8,7 @@ Stage 3 reported three queries 12–17× faster. Stage 4 is the invoice.
 
 ---
 
-## 4a — Extended statistics fixed a 6× error and changed nothing
+## 4a — Extended statistics fixed a 6× error and changed almost nothing
 
 `product_id` and `warehouse_id` are 85% correlated by construction. Postgres
 estimates a multi-column `AND` by multiplying single-column selectivities, which
@@ -33,6 +33,7 @@ different query shapes:
 | Three-table join on the pair | 8,104 | 48,431 | 48,999 | 6.0× low → 1.2% |
 
 **And in all three the plan was byte-identical, and the runtime did not move.**
+*(See the amendment below — a fourth query shape, missed here, does benefit.)*
 
 That is the finding. A misestimate only costs you when it drives a *different
 decision*. Here the planner reached the right plan while holding a number that
@@ -49,7 +50,30 @@ transformative; here it is measured insurance, not a win.
 
 The statistics object is kept. Unlike an index it costs nothing on write — only
 a little `ANALYZE` time — and it protects against a future plan flip. But the
-honest headline is: **no measurable effect today.**
+honest headline is: **no measurable effect on any query that filters on the
+pair.**
+
+### Amended by Stage 5
+
+That conclusion was drawn from three queries, and all three *filter* on
+`product_id AND warehouse_id`. Stage 5 turned up a query it missed: **Q07, which
+`GROUP BY`s the correlated pair**, and where the statistics do measurably help.
+
+| | Group estimate | Actual | Q07 p50 |
+|---|--:|--:|--:|
+| Without extended statistics | 238,020 | 98,729 | 202.6 ms |
+| With extended statistics | 59,594 | 98,729 | **187.8 ms** (−7.3%) |
+
+Both measured with 15 round-robin iterations on the same database, adding the
+statistics between runs. The estimate does not become *accurate* — it goes from
+2.4× over to 1.7× under — but it gets closer, the aggregate is costed better,
+and the query gets 7.3% faster.
+
+The generalisation to keep: extended statistics on a correlated pair matter
+where the pair determines a **cardinality the planner has to size something
+against** — a `GROUP BY`, a hash table, a sort. Where the pair is only a filter
+feeding a scan that was already the right choice, they change nothing. Stage 4
+tested only the second case and drew the general conclusion from it.
 
 ### The 31% improvement that wasn't
 

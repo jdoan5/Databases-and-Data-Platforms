@@ -43,10 +43,10 @@
   "required_indexes": [
     "idx_movements_created"
   ],
-  "root_total_cost": 11789.0,
+  "root_total_cost": 11751.5,
   "cost_tolerance_pct": 15,
-  "plan_rows": 36927,
+  "plan_rows": 36828,
   "rows_tolerance_factor": 2.0,
-  "total_buffers": 13050,
+  "total_buffers": 2180,
   "buffers_tolerance_pct": 25
 }

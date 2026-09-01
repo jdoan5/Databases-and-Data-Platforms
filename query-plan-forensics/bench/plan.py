@@ -13,8 +13,8 @@ cost does not.
 
 from __future__ import annotations
 
-# Fields that vary run to run even when the plan is identical. Stripped before
-# fingerprinting.
+# Fields that vary run to run even when the plan is identical. The gate must
+# never assert on any of these -- see test_no_plan_regression.py.
 VOLATILE_KEYS = {
     "Actual Startup Time",
     "Actual Total Time",
@@ -33,6 +33,20 @@ VOLATILE_KEYS = {
     "I/O Read Time",
     "I/O Write Time",
     "Subplans Removed",  # runtime partition pruning is legitimately variable
+}
+
+# What gets removed from the plan we STORE, which is a narrower set.
+#
+# These two lists were the same list once, and that was a mistake: a stored plan
+# with its buffer counts stripped cannot be re-examined after the fact, so
+# "Q07 gained 208k buffers with no plan change" became undiagnosable from the
+# saved run. Nothing here is used for fingerprinting -- fingerprint() reads only
+# Node Type, Relation Name and Index Name -- so keeping the counters costs
+# nothing and buys every later question.
+STORAGE_STRIP = {
+    "Actual Startup Time",
+    "Actual Total Time",
+    "Actual Loops",
 }
 
 
@@ -76,26 +90,30 @@ def _walk(node, fn):
 
 
 def total_buffers(plan_node):
-    """Buffers *touched*, summed over the tree.
+    """Buffers touched by the whole query: the ROOT node's hit + read.
 
-    Recorded, and reported, but deliberately NOT asserted on by default. The sum
+    Do not sum the tree. EXPLAIN's buffer counters are CUMULATIVE -- every node
+    already includes everything its children touched -- so adding them up
+    double-counts once per level of nesting. On Q07, a six-deep plan, summing
+    gave 339,126 against a true 56,526: a 6x inflation that also manufactured a
+    fake "+208,830 buffers with no plan change" between two runs, because the
+    error scales with the numbers rather than being a constant offset.
+
+    Recorded and reported, but still NOT asserted on by default: the true value
     moves with actual worker count and with bitmap-heap lossiness under work_mem
-    pressure -- both of which differ between a laptop and a CI runner. See
+    pressure, both of which differ between a laptop and a CI runner. See
     ASSERT_BUFFERS in test_no_plan_regression.py.
     """
-    total = 0
-
-    def add(n):
-        nonlocal total
-        total += n.get("Shared Hit Blocks", 0) + n.get("Shared Read Blocks", 0)
-
-    _walk(plan_node, add)
-    return total
+    return plan_node.get("Shared Hit Blocks", 0) + plan_node.get("Shared Read Blocks", 0)
 
 
 def strip_volatile(plan_node):
-    """Return a deep copy of the tree with measured fields removed."""
-    clean = {k: v for k, v in plan_node.items() if k not in VOLATILE_KEYS and k != "Plans"}
+    """Return a deep copy of the tree with only the noisiest timings removed.
+
+    Buffer counters and worker counts are KEPT so a saved run stays diagnosable.
+    They are still never asserted on -- that is the gate's job, not storage's.
+    """
+    clean = {k: v for k, v in plan_node.items() if k not in STORAGE_STRIP and k != "Plans"}
     children = plan_node.get("Plans")
     if children:
         clean["Plans"] = [strip_volatile(c) for c in children]

@@ -19,8 +19,7 @@ client version matches server version 17.
 ```bash
 cd query-plan-forensics
 make up          # pinned Postgres 17, all planner GUCs on the command line
-make init        # schema, views, triggers, procedures
-make load        # 5M movements, fixed seed  (PROFILE=small for 500k)
+make reset       # schema + 5M movements, fixed seed  (PROFILE=small for 500k)
 make check       # acceptance gates: skew, correlation, determinism
 make bench       # 15 round-robin iterations, results to bench/results/
 make report      # markdown table
@@ -29,6 +28,7 @@ make report      # markdown table
 Then, once the schema is settled and you are ready to freeze the contract:
 
 ```bash
+make reset       # ALWAYS start an experiment here — see below
 make venv        # once — pytest, for running the gate locally
 make baseline    # same run, but also writes bench/baselines/*.json
 make gate        # the regression test, locally
@@ -36,10 +36,19 @@ make gate        # the regression test, locally
 
 `make help` lists everything.
 
-Everything above has been run end to end on Postgres 17.10 / arm64. Current
-state on `PROFILE=small`: all four acceptance gates pass, ten queries benchmark
-with a coefficient of variation under 4%, and the regression gate is armed with
-committed baselines. `make audit` reproduces all three schema defects.
+**`make reset`, not `make load`.** `TRUNCATE` replaces rows but leaves every
+index, added column and trigger from a later stage in place, so a baseline
+captured after any tuning work silently measures the *tuned* database. This cost
+a full round of numbers before it was noticed — Q04's baseline read 2.1 ms
+instead of 40.6 ms, understating its own improvement by 19x. `make reset` runs
+`init` first, and `01_schema.sql` opens with `DROP TABLE ... CASCADE`.
+
+Everything above has been run end to end on Postgres 17.10 / arm64. Stages 0–3
+and 7 are complete: all four acceptance gates pass, ten queries benchmark at a
+coefficient of variation under 4%, the regression gate is armed with committed
+baselines, and `make audit` reproduces all three schema defects. Stage 3 results
+are in **[STAGE3-RESULTS.md](STAGE3-RESULTS.md)** — three queries 12–17x faster,
+two measurably worse, and two methodology bugs found along the way.
 
 ---
 
@@ -115,9 +124,16 @@ one.
 | **Never:** wall-clock, execution time, planning time, workers launched | a GitHub runner's IO is nothing like a laptop's; asserting on these guarantees a flapping gate |
 
 `total_buffers` is recorded and reported but **not** asserted by default. It is
-tempting — buffers *touched* looks deterministic for a given plan — but the sum
-moves with actual worker count and with bitmap-heap lossiness under `work_mem`
+tempting — buffers *touched* looks deterministic for a given plan — but it moves
+with actual worker count and with bitmap-heap lossiness under `work_mem`
 pressure. Set `QPF_ASSERT_BUFFERS=1` to enforce it and watch what happens.
+
+It is read from the **root node only**, never summed across the tree. EXPLAIN's
+buffer counters are cumulative — every node already includes what its children
+touched — so summing double-counts once per level of nesting. That bug reported
+339,126 buffers for a query that touched 56,526, and because the error scales
+with the value rather than being a constant offset, it invented a phantom
+"+208,830 buffers with no plan change" between two runs.
 
 CI runs `PROFILE=small`; local runs `PROFILE=full`. Plan shapes can legitimately
 differ between them — that is a cost-based planner working correctly. The gate
@@ -143,8 +159,8 @@ BASELINE (sargable half-open range)      AFTER the "cleaner" rewrite
                                                    Seq Scan on stock_movements
 
 indexes  ['idx_movements_created']  ->  []
-cost     2,702.85                   ->  9,653.55     (+257%)
-buffers  841                        ->  26,127       (31x)
+cost     2,758.50                   ->  9,653.55     (+250%)
+buffers  283                        ->  5,243        (18.5x)
 ```
 
 The gate's output names the divergence directly:
@@ -154,7 +170,7 @@ Q05 FAILED: plan fingerprint changed
   first divergence at node 1:
     baseline: [1, 'Sort', None, None]
     current:  [1, 'Gather Merge', None, None]
-  root_total_cost 2702.85 -> 9653.55
+  root_total_cost 2758.5 -> 9653.55
 ```
 
 Nine queries stay green; reverting the edit turns the tenth green again. That
@@ -193,7 +209,7 @@ subscriptions to PyCharm Pro on 2026-09-01.
 - [x] **0** — pinned Postgres 17, every planner GUC in git, checksums on at initdb
 - [x] **1** — 5M rows, fixed seed, deliberate skew, physical ordering
 - [x] **2** — baseline harness, round-robin iterations, EXPLAIN-sourced timings
-- [ ] **3** — indexing one change at a time: composite vs. covering, partial, BRIN vs. B-tree
+- [x] **3** — indexing one change at a time: composite vs. covering, partial, BRIN vs. B-tree — **[results](STAGE3-RESULTS.md)**
 - [ ] **4** — when the planner is right and you are wrong: write amplification, `CREATE STATISTICS`
 - [ ] **5** — monthly range partitions, including the query it makes slower
 - [ ] **6** — `v_stock_valuation` as a view vs. a matview: latency against staleness

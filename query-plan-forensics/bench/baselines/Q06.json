@@ -69,6 +69,6 @@
   "cost_tolerance_pct": 15,
   "plan_rows": 8,
   "rows_tolerance_factor": 2.0,
-  "total_buffers": 19385,
+  "total_buffers": 3103,
   "buffers_tolerance_pct": 25
 }

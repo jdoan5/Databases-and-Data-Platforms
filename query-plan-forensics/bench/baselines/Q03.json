@@ -57,10 +57,10 @@
     "products_pkey",
     "warehouses_pkey"
   ],
-  "root_total_cost": 74.3,
+  "root_total_cost": 74.31,
   "cost_tolerance_pct": 15,
   "plan_rows": 200,
   "rows_tolerance_factor": 2.0,
-  "total_buffers": 2547,
+  "total_buffers": 513,
   "buffers_tolerance_pct": 25
 }

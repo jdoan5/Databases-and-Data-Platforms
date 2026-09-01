@@ -50,10 +50,10 @@
     "idx_movements_product",
     "idx_movements_warehouse"
   ],
-  "root_total_cost": 1418.06,
+  "root_total_cost": 1459.71,
   "cost_tolerance_pct": 15,
   "plan_rows": 6,
   "rows_tolerance_factor": 2.0,
-  "total_buffers": 12898,
+  "total_buffers": 3192,
   "buffers_tolerance_pct": 25
 }

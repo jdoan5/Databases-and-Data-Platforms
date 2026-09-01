@@ -28,7 +28,8 @@ PSQL := $(DC) exec -T db psql -U postgres -d inventory -X -v ON_ERROR_STOP=1
 PY := $(shell test -x .venv/bin/python && echo .venv/bin/python || echo python3)
 
 .PHONY: help up down nuke wait init load check bench baseline compare report \
-        audit psql analyze indexes stats clean-results venv gate
+        audit psql analyze indexes stats clean-results venv gate stage3 reset \
+        s3a-composite s3a-covering-dirty s3a-covering s3b-partial s3b-denorm s3c-brin s3c-brin-only s3d-revert
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -66,6 +67,13 @@ load: ## generate the dataset (PROFILE=full|small)
 	@echo "loading PROFILE=$(PROFILE) -> $(ROWS) movements"
 	$(PSQL) -v rows=$(ROWS) -f /sql/10_generate.sql
 
+# TRUNCATE is not a reset. `make load` replaces rows but leaves every index,
+# added column and trigger from a later stage in place -- so a "baseline"
+# captured after any Stage 3 work silently measures the tuned database. It cost
+# a full remeasurement to notice: Q04's baseline read 2.1ms instead of 40.9ms.
+# 01_schema.sql opens with DROP TABLE ... CASCADE, so init IS the reset.
+reset: init load ## full teardown to base schema, then reload — start every experiment here
+
 check: ## Stage 1 acceptance gates — skew, correlation, determinism
 	$(PSQL) -f /sql/90_acceptance.sql
 
@@ -94,6 +102,44 @@ report: ## markdown table for STAGE
 
 compare: ## before/after table (BEFORE=baseline AFTER=s3_covering)
 	@$(PY) bench/report.py --before $(BEFORE) --after $(AFTER)
+
+# --- Stage 3: one change at a time, each with its own benchmark run ---------
+# Never two at once. Each target applies exactly one migration and then
+# measures, so every number in the writeup has a single cause.
+
+s3a-composite: ## 3a/1 composite index (product_id, created_at)
+	$(PSQL) -f /sql/30a_covering.sql
+	$(MAKE) bench STAGE=s3a_composite
+
+s3a-covering-dirty: ## 3a/2 covering index, visibility map deliberately stale
+	$(PSQL) -f /sql/30a_covering_part2.sql
+	$(MAKE) bench STAGE=s3a_covering_dirty
+
+s3a-covering: ## 3a/3 the VACUUM that makes the index-only scan real
+	$(PSQL) -f /sql/30a_covering_part3.sql
+	$(MAKE) bench STAGE=s3a_covering
+
+s3b-partial: ## 3b the partial index that works, and the one that cannot be built
+	$(PSQL) -f /sql/30b_partial.sql
+	$(MAKE) bench STAGE=s3b_partial
+
+s3b-denorm: ## 3b what it costs to make Q01 indexable at all
+	$(PSQL) -f /sql/30b_partial_denorm.sql
+	$(MAKE) bench STAGE=s3b_denorm
+
+s3c-brin: ## 3c BRIN vs B-tree on the append-only created_at
+	$(PSQL) -f /sql/30c_brin.sql
+	$(MAKE) bench STAGE=s3c_brin
+
+s3c-brin-only: ## 3c BRIN INSTEAD of the B-tree — the real trade
+	$(PSQL) -f /sql/30c_brin_only.sql
+	$(MAKE) bench STAGE=s3c_brin_only
+
+s3d-revert: ## 3d the verdict: restore the B-tree, drop the unused BRIN
+	$(PSQL) -f /sql/30d_revert_brin.sql
+	$(MAKE) bench STAGE=s3_final
+
+stage3: s3a-composite s3a-covering-dirty s3a-covering s3b-partial s3b-denorm s3c-brin s3c-brin-only s3d-revert ## run all of Stage 3 in order
 
 indexes: ## which indexes are actually being used, and what they cost
 	$(PSQL) -c "SELECT relname, indexrelname, idx_scan, \

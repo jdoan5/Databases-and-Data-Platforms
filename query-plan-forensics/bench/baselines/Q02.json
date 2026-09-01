@@ -68,10 +68,10 @@
     "idx_stock_levels_warehouse",
     "warehouses_pkey"
   ],
-  "root_total_cost": 56880.64,
+  "root_total_cost": 56880.3,
   "cost_tolerance_pct": 15,
   "plan_rows": 6,
   "rows_tolerance_factor": 2.0,
-  "total_buffers": 104749,
+  "total_buffers": 14854,
   "buffers_tolerance_pct": 25
 }

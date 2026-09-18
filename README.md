@@ -78,10 +78,13 @@ A small read-only dashboard: FastAPI serving KPI endpoints over a SQLite
 inventory database, with a dependency-free HTML/CSS/JS front end.
 
 ```bash
-cd "Sales Inventory Dashboard/backend"
-pip install -r requirements.txt
-uvicorn main:app --reload
+cd "Sales Inventory Dashboard"
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload
 ```
+
+From the project directory, not `backend/` — `main.py` imports `.db` relatively.
+Python 3.9–3.13; the pinned pydantic has no 3.14 wheel.
 
 ---
 

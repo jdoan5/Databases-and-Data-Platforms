@@ -12,12 +12,21 @@ minimal.
 ## Run it
 
 ```bash
-cd "Sales Inventory Dashboard/backend"
-pip install -r requirements.txt
-uvicorn main:app --reload
+cd "Sales Inventory Dashboard"
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload
 ```
 
 Then open `web/index.html` (it calls the API at `http://127.0.0.1:8000`).
+
+Run it from this directory, not from `backend/`. `main.py` imports `.db`
+relatively, so `uvicorn main:app` inside `backend/` fails with
+`attempted relative import with no known parent package` — the module has to be
+loaded as part of the `backend` package.
+
+Needs Python 3.9–3.13. On 3.14 the pinned `pydantic==2.9.2` resolves to
+`pydantic-core==2.23.4`, which has no 3.14 wheel and falls back to building from
+source with Rust.
 
 `seed_data.py` creates and populates `inventory.db` on startup if it is missing.
 
@@ -75,7 +84,9 @@ All three are `GET`, all three are read-only, and none take parameters.
 - SQLite through Python's stdlib `sqlite3` — no ORM
 - Pydantic 2.9.2
 
-`requirements.txt` also pins `pandas`, which nothing currently imports.
+Three dependencies, and every other import is standard library. `pandas` was
+pinned here for a while without a single line importing it — aggregation is
+three `GROUP BY` queries, which SQLite does without help.
 
 ---
 

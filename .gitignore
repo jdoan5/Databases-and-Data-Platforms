@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# JetBrains
+# The shared dataSources.xml is kept on purpose: it is the connection list a
+# reader needs to open this project in DataGrip. dataSources.local.xml is where
+# credentials live, and it must never be committed.
+.idea/dataSources.local.xml
+.idea/dataSources/
+.idea/workspace.xml
+.idea/shelf/
+.idea/httpRequests/
+.idea/tasks.xml
+.idea/usage.statistics.xml
+
+# SQLite runtime files. The .db itself is committed for the dashboard demo, but
+# the write-ahead log and shared-memory files are transient process state and
+# change on every run.
+*.db-wal
+*.db-shm
+
+# Local env / secrets
+.env
+.env.*
+!.env.example

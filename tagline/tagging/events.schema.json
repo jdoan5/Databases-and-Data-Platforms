@@ -1,0 +1,708 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jdoan5/Databases-and-Data-Platforms/main/tagline/tagging/events.schema.json",
+  "title": "Tagline dataLayer contract",
+  "description": "Every object or gtag() command the Tagline Supply site pushes to window.dataLayer. Validate any push against the root: arrays are gtag() commands (normalise the Arguments object with Array.from first), objects with an `event` key are events, objects without one are the ecommerce clear or the user_id push. Human-readable version: docs/tagging-plan.md. Event names and parameters follow Google's GA4 recommended events reference and the GTM ecommerce dataLayer format; where this contract is stricter than Google, the plan lists it under Deviations.",
+  "$comment": "Contract version 1.0.0 (Stage 1). Change this file, docs/tagging-plan.md and the site's tests in the same pull request. Every object is closed (additionalProperties: false) so a typo or a stray key fails loudly instead of leaking into GTM's merged data model; the only exception is keys starting with `gtm.`, which Google's own libraries write into the dataLayer. Ajv 2020 with strict: true compiles this schema without warnings.",
+
+  "if": { "type": "array" },
+  "then": { "$ref": "#/$defs/gtag_command" },
+  "else": { "$ref": "#/$defs/data_push" },
+
+  "$defs": {
+
+    "data_push": {
+      "description": "Dispatcher: an object push. With an `event` key it is an event; without one it is the ecommerce clear or the user_id push.",
+      "type": "object",
+      "properties": { "event": { "type": "string" } },
+      "if": { "properties": { "event": true }, "required": ["event"] },
+      "then": { "$ref": "#/$defs/event_push" },
+      "else": { "$ref": "#/$defs/state_push" }
+    },
+
+    "event_push": {
+      "description": "Dispatcher: events. `gtm.*` events belong to Google's libraries and are tolerated; every other event must be one of event_name.",
+      "type": "object",
+      "required": ["event"],
+      "properties": { "event": { "type": "string" } },
+      "if": { "properties": { "event": { "type": "string", "pattern": "^gtm\\." } } },
+      "then": { "$ref": "#/$defs/google_internal_event" },
+      "else": { "$ref": "#/$defs/tagline_event" }
+    },
+
+    "tagline_event": {
+      "description": "Dispatcher: routes each event name to its $defs entry. An unknown name fails on the enum.",
+      "type": "object",
+      "required": ["event"],
+      "properties": { "event": { "$ref": "#/$defs/event_name" } },
+      "allOf": [
+        { "if": { "properties": { "event": { "const": "page_view" } } }, "then": { "$ref": "#/$defs/page_view" } },
+        { "if": { "properties": { "event": { "const": "view_item_list" } } }, "then": { "$ref": "#/$defs/view_item_list" } },
+        { "if": { "properties": { "event": { "const": "select_item" } } }, "then": { "$ref": "#/$defs/select_item" } },
+        { "if": { "properties": { "event": { "const": "view_item" } } }, "then": { "$ref": "#/$defs/view_item" } },
+        { "if": { "properties": { "event": { "const": "add_to_cart" } } }, "then": { "$ref": "#/$defs/add_to_cart" } },
+        { "if": { "properties": { "event": { "const": "remove_from_cart" } } }, "then": { "$ref": "#/$defs/remove_from_cart" } },
+        { "if": { "properties": { "event": { "const": "view_cart" } } }, "then": { "$ref": "#/$defs/view_cart" } },
+        { "if": { "properties": { "event": { "const": "begin_checkout" } } }, "then": { "$ref": "#/$defs/begin_checkout" } },
+        { "if": { "properties": { "event": { "const": "add_shipping_info" } } }, "then": { "$ref": "#/$defs/add_shipping_info" } },
+        { "if": { "properties": { "event": { "const": "add_payment_info" } } }, "then": { "$ref": "#/$defs/add_payment_info" } },
+        { "if": { "properties": { "event": { "const": "purchase" } } }, "then": { "$ref": "#/$defs/purchase" } },
+        { "if": { "properties": { "event": { "const": "search" } } }, "then": { "$ref": "#/$defs/search" } },
+        { "if": { "properties": { "event": { "const": "login" } } }, "then": { "$ref": "#/$defs/login" } },
+        { "if": { "properties": { "event": { "const": "sign_up" } } }, "then": { "$ref": "#/$defs/sign_up" } }
+      ]
+    },
+
+    "state_push": {
+      "description": "Dispatcher: object pushes without an event. `{ user_id }` sets or clears identity; anything else must be exactly `{ ecommerce: null }`.",
+      "type": "object",
+      "if": { "properties": { "user_id": true }, "required": ["user_id"] },
+      "then": { "$ref": "#/$defs/set_user_id" },
+      "else": { "$ref": "#/$defs/ecommerce_clear" }
+    },
+
+    "gtag_command": {
+      "description": "Dispatcher: a gtag() call, i.e. the Arguments object the standard shim `function gtag(){dataLayer.push(arguments);}` pushes, normalised to an array. Consent commands are always present; js/config/set/event appear only when GA4 forwarding is on.",
+      "type": "array",
+      "oneOf": [
+        { "$ref": "#/$defs/gtag_consent" },
+        { "$ref": "#/$defs/gtag_js" },
+        { "$ref": "#/$defs/gtag_config" },
+        { "$ref": "#/$defs/gtag_set" },
+        { "$ref": "#/$defs/gtag_event" }
+      ]
+    },
+
+    "event_name": {
+      "description": "The 14 events in the contract: 13 GA4 recommended events plus page_view, GA4's automatically collected page view, sent manually here because the site is a single-page app. Adding one means a new $defs entry, a row in the plan and a builder test.",
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_item_list",
+        "select_item",
+        "view_item",
+        "add_to_cart",
+        "remove_from_cart",
+        "view_cart",
+        "begin_checkout",
+        "add_shipping_info",
+        "add_payment_info",
+        "purchase",
+        "search",
+        "login",
+        "sign_up"
+      ]
+    },
+
+    "looks_like_email": {
+      "description": "Used under `not`: an email address, raw or URL-encoded (@ or %40). Google's PII policy forbids sending one in any parameter.",
+      "type": "string",
+      "pattern": "[^\\s@]+(@|%40)[^\\s@]+\\.[^\\s@]+"
+    },
+
+    "text": {
+      "description": "A non-empty string within GA4's 100-character limit for event parameter values.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+
+    "absolute_url": {
+      "description": "A full URL with protocol, no fragment (GA4 drops the fragment by default and the site uses path-based routes) and no email address in it.",
+      "type": "string",
+      "pattern": "^https?://[^\\s#]+$",
+      "not": { "$ref": "#/$defs/looks_like_email" }
+    },
+
+    "pseudonymous_id": {
+      "description": "The user_id: 32 lowercase hex characters, the first 128 bits of SHA-256 over a site prefix plus the normalised email. It cannot hold an email address, a name or a username. The email itself never enters the dataLayer.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "examples": ["3f1c9a0b7d2e4f6a8b0c1d2e3f4a5b6c"]
+    },
+
+    "currency": {
+      "description": "ISO 4217 code of the event's money values. Tagline prices everything in US dollars, so the only valid value is USD.",
+      "type": "string",
+      "const": "USD"
+    },
+
+    "value": {
+      "description": "Σ price × quantity over the event's items, before tax and shipping, rounded to cents. A number, never a string.",
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "examples": [41.97]
+    },
+
+    "item_list_id": {
+      "description": "Stable machine id of a product list, snake_case, e.g. all_products, category_drinkware, search_results.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,99}$",
+      "examples": ["category_drinkware"]
+    },
+
+    "item_list_name": {
+      "description": "Human-readable name of the same list, e.g. Drinkware.",
+      "$ref": "#/$defs/text",
+      "examples": ["Drinkware"]
+    },
+
+    "item": {
+      "description": "One product line in an ecommerce event: the GA4 item parameters Tagline sends. Closed: Google allows up to 27 custom item parameters, this contract allows none.",
+      "type": "object",
+      "required": ["item_id", "item_name", "item_brand", "item_category", "price", "quantity"],
+      "properties": {
+        "item_id": {
+          "description": "Catalog SKU: TL-<3-letter category code>-<3 digits>.",
+          "type": "string",
+          "pattern": "^TL-[A-Z]{3}-[0-9]{3}$",
+          "examples": ["TL-DRK-001"]
+        },
+        "item_name": { "$ref": "#/$defs/text", "examples": ["Ceramic Mug"] },
+        "item_brand": { "type": "string", "const": "Tagline Supply" },
+        "item_category": {
+          "type": "string",
+          "enum": ["Apparel", "Drinkware", "Bags", "Office", "Stickers"]
+        },
+        "item_variant": { "$ref": "#/$defs/text", "examples": ["White"] },
+        "price": {
+          "description": "Unit price in USD, a number with at most 2 decimals.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "examples": [13.99]
+        },
+        "quantity": {
+          "description": "Units. On add_to_cart and remove_from_cart: the units added or removed by this action, not the new line total.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "index": {
+          "description": "0-based position in the list the item was shown in. Required in list events, allowed elsewhere.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "list_item": {
+      "description": "An item shown in a product list: an item with a required index.",
+      "$ref": "#/$defs/item",
+      "type": "object",
+      "required": ["index"],
+      "properties": { "index": true }
+    },
+
+    "items_one": {
+      "description": "Exactly one item (view_item, add_to_cart, remove_from_cart).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" },
+      "minItems": 1,
+      "maxItems": 1
+    },
+
+    "items_one_listed": {
+      "description": "Exactly one list item (select_item).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/list_item" },
+      "minItems": 1,
+      "maxItems": 1
+    },
+
+    "items_cart": {
+      "description": "One or more items; GA4 accepts up to 200 per event.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/item" },
+      "minItems": 1,
+      "maxItems": 200
+    },
+
+    "items_listed": {
+      "description": "One or more list items; GA4 accepts up to 200 per event.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/list_item" },
+      "minItems": 1,
+      "maxItems": 200
+    },
+
+    "page_view": {
+      "title": "page_view",
+      "description": "One virtual page view per navigation (react-router location.key), including the first load. Never per re-render.",
+      "type": "object",
+      "required": ["event", "page_location", "page_title"],
+      "properties": {
+        "event": { "const": "page_view" },
+        "page_location": {
+          "description": "Full URL of the page. GA4 limit 1,000 characters.",
+          "$ref": "#/$defs/absolute_url",
+          "type": "string",
+          "maxLength": 1000,
+          "examples": ["http://localhost:5173/product/TL-DRK-001"]
+        },
+        "page_title": {
+          "description": "document.title after the route has set it. GA4 limit 300 characters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "not": { "$ref": "#/$defs/looks_like_email" },
+          "examples": ["Ceramic Mug · Tagline Supply"]
+        },
+        "page_referrer": {
+          "description": "Previous page_location on in-app navigation; document.referrer on the first load when it is non-empty. Omitted, never empty, when unknown. GA4 limit 420 characters.",
+          "$ref": "#/$defs/absolute_url",
+          "type": "string",
+          "maxLength": 420
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "view_item_list": {
+      "title": "view_item_list",
+      "description": "A product list rendered with at least one product (home, category filter, search results). Once per list per page view.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "view_item_list" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "item_list_id", "item_list_name", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "item_list_id": { "$ref": "#/$defs/item_list_id" },
+            "item_list_name": { "$ref": "#/$defs/item_list_name" },
+            "items": { "$ref": "#/$defs/items_listed" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "select_item": {
+      "title": "select_item",
+      "description": "A product in a list was clicked. Same list id and name as the view_item_list it came from, one item with its index.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "select_item" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "item_list_id", "item_list_name", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "item_list_id": { "$ref": "#/$defs/item_list_id" },
+            "item_list_name": { "$ref": "#/$defs/item_list_name" },
+            "items": { "$ref": "#/$defs/items_one_listed" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "view_item": {
+      "title": "view_item",
+      "description": "Product detail page shown for a known product. value = price × 1.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "view_item" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "items": { "$ref": "#/$defs/items_one" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "add_to_cart": {
+      "title": "add_to_cart",
+      "description": "Units of one product added to the cart. items[0].quantity = units added; value = price × units added.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "add_to_cart" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "items": { "$ref": "#/$defs/items_one" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "remove_from_cart": {
+      "title": "remove_from_cart",
+      "description": "Units of one product removed from the cart by the user. items[0].quantity = units removed; value = price × units removed.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "remove_from_cart" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "items": { "$ref": "#/$defs/items_one" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "view_cart": {
+      "title": "view_cart",
+      "description": "Cart page shown with at least one line. Every line in items; value = cart subtotal.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "view_cart" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "items": { "$ref": "#/$defs/items_cart" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "begin_checkout": {
+      "title": "begin_checkout",
+      "description": "Checkout page entered with a non-empty cart.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "begin_checkout" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "items": { "$ref": "#/$defs/items_cart" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "add_shipping_info": {
+      "title": "add_shipping_info",
+      "description": "The user chose a shipping tier. value excludes the shipping cost.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "add_shipping_info" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "shipping_tier", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "shipping_tier": { "type": "string", "enum": ["Ground", "Express", "Next Day"] },
+            "items": { "$ref": "#/$defs/items_cart" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "add_payment_info": {
+      "title": "add_payment_info",
+      "description": "The user chose a payment type. No payment details exist anywhere in the site.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "add_payment_info" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["currency", "value", "payment_type", "items"],
+          "properties": {
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "payment_type": { "type": "string", "enum": ["Credit Card", "PayPal", "Gift Card"] },
+            "items": { "$ref": "#/$defs/items_cart" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "purchase": {
+      "title": "purchase",
+      "description": "Order confirmed. Exactly once per transaction_id: a reload, back/forward or revisit of the confirmation page must not push it again. value excludes tax and shipping, which have their own params.",
+      "type": "object",
+      "required": ["event", "ecommerce"],
+      "properties": {
+        "event": { "const": "purchase" },
+        "ecommerce": {
+          "type": "object",
+          "required": ["transaction_id", "currency", "value", "tax", "shipping", "items"],
+          "properties": {
+            "transaction_id": {
+              "description": "Order id: TL-<base36 timestamp>-<base36 random>. Unique per order, never empty (GA4 deduplicates every purchase with transaction_id \"\" into one), no customer data in it.",
+              "type": "string",
+              "pattern": "^TL-[A-Z0-9]+-[A-Z0-9]+$",
+              "maxLength": 100,
+              "examples": ["TL-MG3K2ZQ1-0A7F3KD"]
+            },
+            "currency": { "$ref": "#/$defs/currency" },
+            "value": { "$ref": "#/$defs/value" },
+            "tax": { "description": "Tax in USD; 0 is valid.", "type": "number", "minimum": 0 },
+            "shipping": { "description": "Shipping cost in USD; 0 is valid.", "type": "number", "minimum": 0 },
+            "items": { "$ref": "#/$defs/items_cart" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "search": {
+      "title": "search",
+      "description": "A search was submitted with a non-empty term. Fires on submit, even when there are no results.",
+      "type": "object",
+      "required": ["event", "search_term"],
+      "properties": {
+        "event": { "const": "search" },
+        "search_term": {
+          "description": "The term as typed: trimmed, whitespace collapsed, any email address replaced by [email], cut to 100 characters.",
+          "$ref": "#/$defs/text",
+          "type": "string",
+          "pattern": "^\\S(.*\\S)?$",
+          "not": { "$ref": "#/$defs/looks_like_email" },
+          "examples": ["mug"]
+        }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "login": {
+      "title": "login",
+      "description": "An existing account signed in. Preceded by the { user_id } push; user_id itself is never an event parameter.",
+      "type": "object",
+      "required": ["event", "method"],
+      "properties": {
+        "event": { "const": "login" },
+        "method": { "type": "string", "enum": ["email"] }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "sign_up": {
+      "title": "sign_up",
+      "description": "A new account was created (and is now signed in). Preceded by the { user_id } push. A sign-up does not also push login.",
+      "type": "object",
+      "required": ["event", "method"],
+      "properties": {
+        "event": { "const": "sign_up" },
+        "method": { "type": "string", "enum": ["email"] }
+      },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "ecommerce_clear": {
+      "title": "ecommerce: null",
+      "description": "Pushed immediately before every ecommerce event so GTM's data model never merges a stale ecommerce object into the next event.",
+      "type": "object",
+      "required": ["ecommerce"],
+      "properties": { "ecommerce": { "type": "null" } },
+      "additionalProperties": false
+    },
+
+    "set_user_id": {
+      "title": "user_id",
+      "description": "Identity push. A pseudonymous id on sign-in (and on app start while signed in, before the first page_view); null on sign-out. Never an empty string or the string \"null\" (Google). Never pushed for a visitor who has not signed in.",
+      "type": "object",
+      "required": ["user_id"],
+      "properties": {
+        "user_id": {
+          "anyOf": [
+            { "$ref": "#/$defs/pseudonymous_id" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "google_internal_event": {
+      "title": "gtm.*",
+      "description": "Messages Google's own libraries push (for example the GTM snippet's { event: 'gtm.js', 'gtm.start': … }). Tolerated, not described: only gtm.* keys are allowed next to event.",
+      "type": "object",
+      "required": ["event"],
+      "properties": { "event": { "type": "string", "pattern": "^gtm\\." } },
+      "patternProperties": { "^gtm\\.": true },
+      "additionalProperties": false
+    },
+
+    "consent_state": {
+      "type": "string",
+      "enum": ["granted", "denied"]
+    },
+
+    "gtag_consent": {
+      "title": "gtag consent",
+      "description": "Consent Mode v2. gtag('consent', 'default', …) is the first dataLayer entry on every load; gtag('consent', 'update', …) follows on Accept/Reject or when a stored choice is re-applied.",
+      "type": "array",
+      "if": { "prefixItems": [true, { "const": "default" }, true], "minItems": 3, "items": false },
+      "then": { "$ref": "#/$defs/gtag_consent_default" },
+      "else": { "$ref": "#/$defs/gtag_consent_update" }
+    },
+
+    "gtag_consent_default": {
+      "description": "['consent', 'default', {...}]: all four v2 consent types set, all denied. wait_for_update and region are Google's optional default-only settings.",
+      "type": "array",
+      "prefixItems": [
+        { "const": "consent" },
+        { "const": "default" },
+        {
+          "type": "object",
+          "required": ["analytics_storage", "ad_storage", "ad_user_data", "ad_personalization"],
+          "properties": {
+            "analytics_storage": { "const": "denied" },
+            "ad_storage": { "const": "denied" },
+            "ad_user_data": { "const": "denied" },
+            "ad_personalization": { "const": "denied" },
+            "wait_for_update": { "type": "integer", "minimum": 1 },
+            "region": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$" },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "minItems": 3,
+      "items": false
+    },
+
+    "gtag_consent_update": {
+      "description": "['consent', 'update', {...}]: all four v2 consent types, each granted or denied. The banner's Accept sets all four granted, Reject all four denied.",
+      "type": "array",
+      "prefixItems": [
+        { "const": "consent" },
+        { "const": "update" },
+        {
+          "type": "object",
+          "required": ["analytics_storage", "ad_storage", "ad_user_data", "ad_personalization"],
+          "properties": {
+            "analytics_storage": { "$ref": "#/$defs/consent_state" },
+            "ad_storage": { "$ref": "#/$defs/consent_state" },
+            "ad_user_data": { "$ref": "#/$defs/consent_state" },
+            "ad_personalization": { "$ref": "#/$defs/consent_state" }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "minItems": 3,
+      "items": false
+    },
+
+    "gtag_js": {
+      "description": "['js', Date]: part of the gtag.js snippet. The second item is a Date (an ISO string once JSON-cloned).",
+      "type": "array",
+      "prefixItems": [{ "const": "js" }, true],
+      "minItems": 2,
+      "items": false
+    },
+
+    "gtag_config": {
+      "description": "['config', 'G-…', {...}]: GA4 forwarding only. send_page_view must be false because the site sends its own page_view per route. user_id is Google's documented config parameter for a signed-in user.",
+      "type": "array",
+      "prefixItems": [
+        { "const": "config" },
+        { "type": "string", "pattern": "^G-[A-Z0-9]{4,}$" },
+        {
+          "type": "object",
+          "required": ["send_page_view"],
+          "properties": {
+            "send_page_view": { "const": false },
+            "debug_mode": { "type": "boolean" },
+            "user_id": {
+              "anyOf": [
+                { "$ref": "#/$defs/pseudonymous_id" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "minItems": 3,
+      "items": false
+    },
+
+    "gtag_set": {
+      "description": "['set', { user_id }]: GA4 forwarding only. Google's recommended way to set user_id after the tag has loaded, and to clear it with null on sign-out.",
+      "type": "array",
+      "prefixItems": [
+        { "const": "set" },
+        {
+          "type": "object",
+          "required": ["user_id"],
+          "properties": {
+            "user_id": {
+              "anyOf": [
+                { "$ref": "#/$defs/pseudonymous_id" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "minItems": 2,
+      "items": false
+    },
+
+    "gtag_event": {
+      "description": "['event', name, params]: GA4 forwarding only, a copy of an event already validated as a dataLayer push (ecommerce fields flattened into params, as gtag.js expects). Only the name is checked here.",
+      "type": "array",
+      "prefixItems": [
+        { "const": "event" },
+        { "$ref": "#/$defs/event_name" },
+        { "type": "object" }
+      ],
+      "minItems": 3,
+      "items": false
+    }
+  }
+}

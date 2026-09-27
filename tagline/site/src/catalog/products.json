@@ -1,0 +1,26 @@
+[
+  { "item_id": "TL-APP-001", "item_name": "Classic Logo Tee", "item_category": "Apparel", "item_variant": "Navy", "price": 24.0, "swatch": "#1f3a5f", "description": "Midweight cotton tee with the Tagline wordmark on the chest." },
+  { "item_id": "TL-APP-002", "item_name": "Classic Logo Tee", "item_category": "Apparel", "item_variant": "Heather Grey", "price": 24.0, "swatch": "#9aa0a6", "description": "The same tee in heather grey." },
+  { "item_id": "TL-APP-003", "item_name": "Pipeline Hoodie", "item_category": "Apparel", "item_variant": "Charcoal", "price": 58.0, "swatch": "#36393d", "description": "Heavyweight pullover hoodie with a kangaroo pocket." },
+  { "item_id": "TL-APP-004", "item_name": "Query Crewneck", "item_category": "Apparel", "item_variant": "Forest", "price": 46.0, "swatch": "#2e5e4e", "description": "Brushed-fleece crewneck sweatshirt." },
+  { "item_id": "TL-APP-005", "item_name": "Dashboard Cap", "item_category": "Apparel", "item_variant": "Black", "price": 21.99, "swatch": "#1b1b1b", "description": "Six-panel cap with an embroidered tag icon." },
+
+  { "item_id": "TL-DRK-001", "item_name": "Ceramic Mug", "item_category": "Drinkware", "item_variant": "White", "price": 13.99, "swatch": "#f1efe9", "description": "12 oz ceramic mug, dishwasher safe." },
+  { "item_id": "TL-DRK-002", "item_name": "Insulated Bottle 20 oz", "item_category": "Drinkware", "item_variant": "Slate", "price": 29.0, "swatch": "#5b6770", "description": "Double-wall steel bottle that keeps drinks cold for a day." },
+  { "item_id": "TL-DRK-003", "item_name": "Cold Brew Tumbler", "item_category": "Drinkware", "price": 24.5, "swatch": "#7a4a2a", "description": "16 oz tumbler with a straw lid." },
+  { "item_id": "TL-DRK-004", "item_name": "Enamel Camp Mug", "item_category": "Drinkware", "price": 17.99, "swatch": "#d9d4c7", "description": "Speckled enamel mug for the trail or the desk." },
+
+  { "item_id": "TL-BAG-001", "item_name": "Canvas Tote", "item_category": "Bags", "item_variant": "Natural", "price": 19.99, "swatch": "#e3d5b8", "description": "Heavy canvas tote with an inside pocket." },
+  { "item_id": "TL-BAG-002", "item_name": "Everyday Backpack", "item_category": "Bags", "price": 72.0, "swatch": "#2d3a45", "description": "20 L backpack with a padded laptop compartment." },
+  { "item_id": "TL-BAG-003", "item_name": "Laptop Sleeve 14 in", "item_category": "Bags", "price": 34.0, "swatch": "#8c6d4f", "description": "Felt sleeve for 13 and 14 inch laptops." },
+  { "item_id": "TL-BAG-004", "item_name": "Packable Duffel", "item_category": "Bags", "price": 48.0, "swatch": "#3f6f8f", "description": "Folds into its own pocket; 35 L when open." },
+
+  { "item_id": "TL-OFF-001", "item_name": "Dot Grid Notebook", "item_category": "Office", "price": 12.0, "swatch": "#c44536", "description": "A5, 160 pages, lies flat." },
+  { "item_id": "TL-OFF-002", "item_name": "Gel Pen 3-Pack", "item_category": "Office", "price": 8.5, "swatch": "#283d3b", "description": "0.5 mm gel pens in black, blue and red." },
+  { "item_id": "TL-OFF-003", "item_name": "Desk Mat", "item_category": "Office", "item_variant": "Graphite", "price": 26.0, "swatch": "#4a4e54", "description": "Felt desk mat, 80 x 30 cm." },
+  { "item_id": "TL-OFF-004", "item_name": "Cable Organizer", "item_category": "Office", "price": 9.99, "swatch": "#b08968", "description": "Leather roll-up organizer for cables and chargers." },
+
+  { "item_id": "TL-STK-001", "item_name": "Logo Sticker", "item_category": "Stickers", "price": 3.0, "swatch": "#f2b134", "description": "Die-cut vinyl sticker, 3 in." },
+  { "item_id": "TL-STK-002", "item_name": "Sticker Pack", "item_category": "Stickers", "item_variant": "6 pack", "price": 12.0, "swatch": "#6c9a8b", "description": "Six vinyl stickers from the Tagline archive." },
+  { "item_id": "TL-STK-003", "item_name": "Holographic Tag Sticker", "item_category": "Stickers", "price": 4.5, "swatch": "#a78bfa", "description": "Holographic vinyl, catches the light." }
+]

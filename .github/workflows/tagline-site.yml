@@ -1,0 +1,53 @@
+name: tagline-site
+
+# Typecheck, unit tests and a production build for the Tagline Stage 1 storefront.
+#
+# The unit tests validate every event builder against tagging/events.schema.json, so
+# a change to the contract that the site no longer satisfies fails here too — which is
+# why the schema folder is in the path filter. The Playwright funnel test is not run
+# in CI yet; that is Stage 5 (tag QA).
+
+on:
+  push:
+    paths:
+      - "tagline/site/**"
+      - "tagline/tagging/**"
+      - ".github/workflows/tagline-site.yml"
+  pull_request:
+    paths:
+      - "tagline/site/**"
+      - "tagline/tagging/**"
+      - ".github/workflows/tagline-site.yml"
+  workflow_dispatch:
+
+# Least privilege: the job only reads the repository.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: tagline/site
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tagline/site/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (Vitest)
+        run: npm test
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,5 @@
+node_modules
+# the site built with a measurement id baked in, rebuilt on every run
+.build
+# run output: plan.json, hits.ndjson, requests.ndjson, devices.ndjson, summary.json
+out

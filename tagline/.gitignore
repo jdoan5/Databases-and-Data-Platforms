@@ -1,0 +1,11 @@
+# Local configuration: holds the Google Cloud project id. Copy .env.example to .env.
+.env
+
+# The pipeline's virtual environment and Python caches
+pipeline/.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Cost logs written by `make build COSTS_JSON=...`
+pipeline/runs/

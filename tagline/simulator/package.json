@@ -1,0 +1,19 @@
+{
+  "name": "tagline-simulator",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Seeded synthetic shoppers for the Tagline site. Dry run by default: nothing reaches Google.",
+  "scripts": {
+    "simulate": "node src/cli.js",
+    "plan": "node src/cli.js --plan-only",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node --test e2e/dryrun.e2e.js"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  },
+  "engines": {
+    "node": "^22.22.0 || ^24.0.0 || >=26.0.0"
+  }
+}

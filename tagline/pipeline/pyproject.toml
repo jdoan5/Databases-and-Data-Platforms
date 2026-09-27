@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tagline-pipeline"
+version = "0.2.0"
+description = "Tagline Stage 2: load reference data, build the BigQuery models, run the data checks."
+requires-python = ">=3.12"
+dependencies = [
+  "google-cloud-bigquery>=3.25,<4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["tagline_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The package is run from source (python -m tagline_pipeline, from this folder), not through the
+# editable install: on macOS a venv inside ~/Documents can get the "hidden" file flag, and Python
+# then skips the editable install's .pth file. This keeps `pytest` itself working either way.
+pythonpath = ["."]

@@ -57,6 +57,48 @@ describe('GA4 forwarding', () => {
     for (const entry of globalThis.dataLayer ?? []) expect(contract.check(entry).errors).toEqual([])
   })
 
+  it('keeps gtm.* keys out of the params when gtag.js has written them into the pushed object', async () => {
+    const { ga4, track, build } = await load('G-TEST1234')
+    ga4.loadGa4()
+    // What gtag.js and GTM do once loaded: stamp each pushed event object in place.
+    const dl = globalThis.dataLayer as unknown[]
+    const push = dl.push.bind(dl)
+    let id = 0
+    dl.push = (...entries: unknown[]) => {
+      for (const e of entries) if (e && typeof e === 'object' && 'event' in e) Object.assign(e, { 'gtm.uniqueEventId': ++id })
+      return push(...entries)
+    }
+    track(build.selectItem({ id: 'all_products', name: 'All products' }, mug, 0))
+    track(build.search('mug'))
+    const events = gtagCalls().filter((c) => c[0] === 'event')
+    expect(events.map((c) => Object.keys(c[2] as object))).toEqual([
+      ['currency', 'item_list_id', 'item_list_name', 'items'],
+      ['search_term'],
+    ])
+    for (const entry of globalThis.dataLayer ?? []) expect(contract.check(entry).errors).toEqual([])
+  })
+
+  it('sets the cleaned page fields before each page_view, so later hits do not read the raw URL', async () => {
+    const { track, build } = await load('G-TEST1234')
+    track(
+      build.pageView({
+        page_location: 'http://localhost:5173/search?q=mug%20jo@example.com',
+        page_title: 'Search: mug [email] · Tagline Supply',
+        page_referrer: 'http://localhost:5173/',
+      }),
+    )
+    const page = {
+      page_location: 'http://localhost:5173/search?q=%5Bemail%5D',
+      page_title: 'Search: mug [email] · Tagline Supply',
+      page_referrer: 'http://localhost:5173/',
+    }
+    expect(gtagCalls()).toEqual([
+      ['set', page],
+      ['event', 'page_view', page],
+    ])
+    for (const entry of globalThis.dataLayer ?? []) expect(contract.check(entry).errors).toEqual([])
+  })
+
   it('sets user_id with set and clears it with set null', async () => {
     const { identity } = await load('G-TEST1234')
     identity.pushUserId('0123456789abcdef0123456789abcdef')

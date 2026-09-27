@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { displayName, formatUSD } from '../catalog/catalog'
 import { emptyCartAfterOrder } from '../cart/cart'
 import {
@@ -19,13 +19,12 @@ const isTier = (v: string): v is ShippingTier => SHIPPING_TIERS.some((t) => t.id
 const isPayment = (v: string): v is PaymentType => (PAYMENT_TYPES as readonly string[]).includes(v)
 
 export function Checkout() {
-  const location = useLocation()
   const navigate = useNavigate()
   const lines = useCartLines()
   const [tier, setTier] = useState<ShippingTier | null>(null)
   const [payment, setPayment] = useState<PaymentType | null>(null)
   useDocumentTitle('Checkout')
-  useTrackOnce(location.key, () => (lines.length ? beginCheckout(lines) : null))
+  useTrackOnce('begin_checkout', () => (lines.length ? beginCheckout(lines) : null))
 
   if (lines.length === 0) {
     return (

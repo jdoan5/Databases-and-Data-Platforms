@@ -4,8 +4,8 @@ import { signIn, signOut } from '../auth/session'
 import { useDocumentTitle, useSession } from '../hooks'
 
 /**
- * Fake sign-in: an email field and nothing else. The email is hashed into a
- * pseudonymous user_id in the browser and then dropped; it is never stored or tagged.
+ * Fake sign-in: an email field and nothing else. The email finds (or opens) an account
+ * whose opaque id is the user_id; the email itself is never stored or tagged.
  */
 export function SignIn() {
   const session = useSession()
@@ -37,8 +37,8 @@ export function SignIn() {
         <h1>Signed in</h1>
         <p>
           You are signed in. The only identifier this site keeps, and the one sent as <code>user_id</code>, is{' '}
-          <code data-testid="user-id">{session.user_id}</code>, derived from your email by a one-way hash. The email
-          itself was discarded.
+          <code data-testid="user-id">{session.user_id}</code>, a random account id with no connection to your
+          email. The email itself isn't stored.
         </p>
         <div className="button-row">
           <button type="button" onClick={signOut}>

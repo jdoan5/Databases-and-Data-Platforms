@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, type FormEvent } from 'react'
-import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, NavigationType, Outlet, useLocation, useNavigate, useNavigationType, useSearchParams } from 'react-router'
 import { signOut } from '../auth/session'
 import { cartCount } from '../cart/cart'
-import { useCartLines, useSession } from '../hooks'
+import { PageVisitContext, useCartLines, useSession } from '../hooks'
 import { openConsentSettings } from '../tagging/consent'
 import { pageView, search } from '../tagging/events'
 import { cleanSearchTerm } from '../tagging/pii'
@@ -11,25 +11,62 @@ import { ConsentBanner } from './ConsentBanner'
 import { TagInspector } from './TagInspector'
 
 /**
- * page_view once per route change.
+ * One id per page visit, for page_view and every once-per-page event.
+ *
+ * Normally the router's location.key: a new history entry, Back/Forward, or a replace
+ * to a new URL is a new page. The exception: react-router's <Link> turns a click on a
+ * link to the current URL (the brand on home, the active category, Cart on the cart
+ * page) into a replace with a fresh key. The URL has not changed, so the visit, and
+ * its id, stay the same. Worked out during render (React's "adjust state when a prop
+ * changes" pattern) so the pages below see the right id on their first render.
+ */
+function usePageVisit(): string {
+  const location = useLocation()
+  const navigationType = useNavigationType()
+  const url = location.pathname + location.search
+  const [visit, setVisit] = useState({ key: location.key, url, id: location.key })
+  if (visit.key === location.key) return visit.id
+  const id = navigationType === NavigationType.Replace && url === visit.url ? visit.id : location.key
+  setVisit({ key: location.key, url, id })
+  return id
+}
+
+/**
+ * page_view once per page visit.
  *
  * A layout effect, so it runs after the new page's own layout effects (which set
  * document.title) and before any page's passive effects (which push view_item_list,
- * view_item and so on). Keyed on location.key: a new history entry is a new page,
- * and StrictMode's second effect run is not. page_referrer is the previous in-app
- * URL, or document.referrer for the first page when the browser provides one.
+ * view_item and so on). Keyed on the visit id, so StrictMode's second effect run is
+ * not a new page. page_referrer is the previous in-app URL, or document.referrer for
+ * the first page when the browser provides one.
  */
-function usePageViews(): void {
-  const location = useLocation()
-  const lastKey = useRef<string | null>(null)
+function usePageViews(visit: string): void {
+  const lastVisit = useRef<string | null>(null)
   const previousUrl = useRef<string>(typeof document === 'undefined' ? '' : document.referrer)
   useLayoutEffect(() => {
-    if (lastKey.current === location.key) return
-    lastKey.current = location.key
+    if (lastVisit.current === visit) return
+    lastVisit.current = visit
     const url = window.location.href
     track(pageView({ page_location: url, page_title: document.title, page_referrer: previousUrl.current || undefined }))
     previousUrl.current = url
-  }, [location.key])
+  }, [visit])
+}
+
+/**
+ * The link or button that started a navigation often leaves with the old page, and
+ * focus falls to <body>: a keyboard or screen-reader user would start again from the
+ * top of the document. In that case focus moves to <main>. Focus that survived (the
+ * search box, a header link) is left where it is, and the first load is left alone.
+ */
+function useFocusAfterNavigation(visit: string): void {
+  const lastVisit = useRef<string | null>(null)
+  useEffect(() => {
+    const previous = lastVisit.current
+    lastVisit.current = visit
+    if (previous === null || previous === visit) return
+    const active = document.activeElement
+    if (!active || active === document.body) document.getElementById('main')?.focus({ preventScroll: true })
+  }, [visit])
 }
 
 function SearchForm() {
@@ -37,6 +74,13 @@ function SearchForm() {
   const [params] = useSearchParams()
   const location = useLocation()
   const current = location.pathname === '/search' ? (params.get('q') ?? '') : ''
+  const input = useRef<HTMLInputElement>(null)
+
+  // The box shows the current term. It is updated in place rather than remounted, so
+  // focus stays in the box after a submit.
+  useEffect(() => {
+    if (input.current) input.current.value = current
+  }, [current])
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -53,14 +97,24 @@ function SearchForm() {
       <label htmlFor="site-search" className="visually-hidden">
         Search products
       </label>
-      <input id="site-search" key={current} name="q" type="search" defaultValue={current} placeholder="Search products" required />
+      <input
+        ref={input}
+        id="site-search"
+        name="q"
+        type="search"
+        defaultValue={current}
+        placeholder="Search products"
+        required
+      />
       <button type="submit">Search</button>
     </form>
   )
 }
 
 export function Layout({ debug }: { debug: boolean }) {
-  usePageViews()
+  const visit = usePageVisit()
+  usePageViews(visit)
+  useFocusAfterNavigation(visit)
   const location = useLocation()
   const lines = useCartLines()
   const session = useSession()
@@ -100,14 +154,20 @@ export function Layout({ debug }: { debug: boolean }) {
               <Link to="/signin">Sign in</Link>
             )}
             <Link to="/cart" className="cart-link">
-              Cart <span className="count" aria-label={`${count} items`}>{count}</span>
+              Cart{' '}
+              <span className="count" aria-hidden="true">
+                {count}
+              </span>
+              <span className="visually-hidden">({count === 1 ? '1 item' : `${count} items`})</span>
             </Link>
           </nav>
         </div>
       </header>
 
       <main id="main" tabIndex={-1}>
-        <Outlet />
+        <PageVisitContext value={visit}>
+          <Outlet />
+        </PageVisitContext>
       </main>
 
       <footer className="site-footer">

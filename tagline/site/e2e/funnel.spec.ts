@@ -57,6 +57,12 @@ test('funnel: every push valid, events in order, purchase exactly once across a 
   page.on('console', (msg) => {
     if (msg.type() === 'warning' || msg.type() === 'error') warnings.push(msg.text())
   })
+  // With no GA4 measurement id (the config forces it empty), nothing may leave the machine.
+  const offsite: string[] = []
+  page.on('request', (req) => {
+    const url = new URL(req.url())
+    if (url.protocol !== 'data:' && url.hostname !== 'localhost') offsite.push(req.url())
+  })
 
   // Home, with the Tag Inspector switched on.
   await page.goto('/?debug=1')
@@ -75,6 +81,10 @@ test('funnel: every push valid, events in order, purchase exactly once across a 
   // view_cart → begin_checkout.
   await page.getByRole('link', { name: 'View cart' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Cart' })).toBeVisible()
+  // The header's Cart link, on the cart page: a click on a link to the page already
+  // shown is not a new page, so no second page_view or view_cart. The exact event
+  // order below would catch one.
+  await page.getByRole('link', { name: /^Cart/ }).click()
   await page.getByRole('link', { name: 'Checkout' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Checkout' })).toBeVisible()
 
@@ -163,4 +173,5 @@ test('funnel: every push valid, events in order, purchase exactly once across a 
   expect(JSON.parse(claimed ?? '[]')).toContain(transactionId)
 
   expect(warnings.filter((w) => w.includes('[tagline]'))).toEqual([])
+  expect(offsite, 'requests to anything but the local dev server').toEqual([])
 })

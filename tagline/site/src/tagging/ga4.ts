@@ -7,6 +7,11 @@
  * gtag('event', name, params) with the ecommerce object flattened into the params,
  * which is the shape gtag.js expects.
  *
+ * Before each forwarded page_view, `set` passes the same cleaned page_location,
+ * page_title and page_referrer to gtag.js. Without it, gtag.js reads the page URL for
+ * every other hit (its own user_engagement, the forwarded ecommerce events) from
+ * document.location, which still holds an email typed into a shared link.
+ *
  * Consent Mode applies either way: gtag.js reads the consent default/update commands
  * from the dataLayer and adjusts what it stores and sends.
  */
@@ -33,18 +38,23 @@ export function loadGa4(): void {
   gtag('config', ga4MeasurementId, { send_page_view: false })
 }
 
+/** `gtm.*` keys are Google's own bookkeeping; gtag.js would send one as a junk `ep.gtm` parameter. */
+const withoutGtmKeys = (params: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(params).filter(([key]) => !key.startsWith('gtm.')))
+
 export function ga4Params(event: TagEvent): { name: string; params: Record<string, unknown> } {
   const { event: name, ...rest } = event
   if ('ecommerce' in rest) {
     const { ecommerce, ...others } = rest
-    return { name, params: { ...others, ...ecommerce } }
+    return { name, params: withoutGtmKeys({ ...others, ...ecommerce }) }
   }
-  return { name, params: rest }
+  return { name, params: withoutGtmKeys(rest) }
 }
 
 export function forwardToGa4(event: TagEvent): void {
   if (!ga4MeasurementId) return
   const { name, params } = ga4Params(event)
+  if (name === 'page_view') gtag('set', params)
   gtag('event', name, params)
 }
 

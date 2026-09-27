@@ -60,12 +60,16 @@ Page code never builds these objects by hand. It calls a typed builder (`viewIte
 
 ## 3. Events: when they fire
 
-"Once per page view" means once per navigation (react-router `location.key`); a re-render, a state
-change or React StrictMode's second effect run is not a new page view.
+"Once per page view" means once per page visit: a new history entry, Back/Forward, or a replace that
+changes the URL. A re-render, a state change or React StrictMode's second effect run is not a new page
+view, and neither is a click on a link to the page already shown (the logo on home, the active
+category, Cart on the cart page). react-router turns that click into a replace with a new
+`location.key` but the same URL, so the site keys its page visits on the URL for replaces, not on the
+key alone.
 
 | # | Event | Fires when | Must NOT fire when |
 |---|---|---|---|
-| 1 | `page_view` | Every navigation, including the first load, after the route has set `document.title`. It is the first event of each page; that page's other events follow it. | A component re-renders; the same `location.key` is seen again; only state changes (filters that do not change the URL, the Tag Inspector opening). |
+| 1 | `page_view` | Every navigation, including the first load, after the route has set `document.title`. It is the first event of each page; that page's other events follow it. | A component re-renders; a link to the current URL is clicked; only state changes (filters that do not change the URL, the Tag Inspector opening). |
 | 2 | `view_item_list` | A product list renders with at least one product: home (`all_products`), a category page (`category_<slug>`), search results (`search_results`). Once per list per page view. Items are every product shown, in display order. | The list is empty (a search with no results fires `search` but no `view_item_list`); the cart badge or any unrelated state changes. |
 | 3 | `select_item` | A product in one of those lists is clicked, before navigating to the product. Same `item_list_id`/`item_list_name` as the list, one item with its `index`. | A product link outside a list is clicked (cart lines, confirmation page). |
 | 4 | `view_item` | A product detail page renders for a product that exists. Once per page view. | The product id is unknown (the not-found page). |
@@ -96,7 +100,7 @@ Signing out pushes `{ user_id: null }` and no event (GA4 has no recommended logo
 | Event | Parameter | Type | Required | Example | Rule |
 |---|---|---|---|---|---|
 | `page_view` | `page_location` | string | yes | `http://localhost:5173/product/TL-DRK-001` | Full URL with protocol, no `#fragment`, ≤ 1,000 chars. |
-| | `page_title` | string | yes | `Ceramic Mug · Tagline Supply` | `document.title` of the new route, ≤ 300 chars. |
+| | `page_title` | string | yes | `Ceramic Mug, White · Tagline Supply` | `document.title` of the new route, ≤ 300 chars. |
 | | `page_referrer` | string | when known | `http://localhost:5173/` | Previous in-app URL; on the first load, `document.referrer` if non-empty. Omitted, never `""`, when unknown. ≤ 420 chars. |
 | `search` | `search_term` | string | yes | `ceramic mug` | Trimmed, inner whitespace collapsed, any email address replaced by `[email]`, cut to 100 chars. |
 | `login`, `sign_up` | `method` | string | yes | `email` | Only `email` in Stage 1. |
@@ -150,14 +154,16 @@ No other item keys (Google allows `affiliation`, `coupon`, `discount`, `item_cat
 
 - `currency: 'USD'` on every ecommerce event, including the list events that carry no `value`.
 - **`value` = Σ `price` × `quantity` over the event's `items`**, summed in integer cents and converted
-  back (3 × 19.99 = 59.97, not 59.970000000000006). One function computes it for every event.
+  back (5 × 19.99 = 99.95; plain floating point gives 99.94999999999999). One function computes it
+  for every event.
 - `value` never includes tax or shipping. On `purchase` they travel as `tax` and `shipping`; the amount
   paid is `value + tax + shipping` and is derivable, so it is not sent.
 - Per event: `view_item` = price × 1; `add_to_cart` / `remove_from_cart` = price × units in this action;
   `view_cart`, `begin_checkout`, `add_shipping_info`, `add_payment_info`, `purchase` = cart subtotal.
 - Worked example: 3 × Ceramic Mug at 13.99 + 1 × Classic Logo Tee at 24.00 → `value` 65.97; tax at the
   store's flat 8% → 5.28; Ground shipping → 5.00; paid 76.25.
-- The schema checks that `value` is a positive number. It cannot check the arithmetic; unit tests do (§10).
+- The schema checks that `value` is a positive number. It cannot check the arithmetic or the 2-decimal
+  rule; unit tests do (§10).
 
 ## 7. Identity (`user_id`)
 
@@ -167,15 +173,19 @@ No other item keys (Google allows `affiliation`, `coupon`, `discount`, `item_cat
 | Sign-in or sign-up submitted | `{ user_id: '<id>' }`, then `login` or `sign_up` | The id is in GTM's data model before the event. |
 | App start while signed in | `{ user_id: '<id>' }` before the first `page_view` | So the first page view carries it. |
 | Sign-out | `{ user_id: null }` | Google: `null`, never `""`, `" "` or the string `"null"`. |
+| Signed in or out in another tab | `{ user_id: '<id>' }` or `{ user_id: null }`, no event | The session is shared by every tab; an open tab follows it so its later events carry the right id. |
 
-- **Format**: 32 lowercase hex characters, the first 128 bits of SHA-256 over a site prefix plus the
-  trimmed, lower-cased email. Same email, same id, on any device, which is what Stage 2 needs to
-  stitch sessions.
-- **Never PII.** The email is hashed in the browser and discarded; it is never pushed, stored or logged.
-  The schema only accepts `^[0-9a-f]{32}$`, which cannot hold an email, a name or a username.
-- **Pseudonymous, not anonymous.** Anyone with this code and a candidate email can recompute the id and
-  confirm a match. In production the id would be the account key issued by the auth backend; this
-  project has no backend, so a hash stands in. The privacy policy would have to disclose it.
+- **Format**: 32 lowercase hex characters: an opaque account id, 128 random bits issued the first time
+  an email signs in or up (`site/src/auth/accounts.ts`, standing in for an account service). The same
+  email gets the same id again in this browser, which is what Stage 2 needs to stitch sessions; a real
+  account service would return it on every device.
+- **Never the email, and not derived from it.** The email only looks the account up, through a SHA-256
+  kept in this browser's localStorage; it is never pushed, stored as text or logged, and the tagged id has
+  no relation to it. The schema only accepts `^[0-9a-f]{32}$`, so a raw email, name or username cannot be
+  sent. The pattern alone can't tell an opaque id from a hash of an email, so the id's origin is a code
+  rule, covered by a unit test that a fresh browser gets a different id for the same email.
+- **Meets Google's User-ID rule.** Google: "Your user ID must not contain information that a third party
+  could use to determine a user's identity." A random id contains none.
 - `user_id` is a standalone push, **never an event parameter** (Google: it is a configuration setting,
   not an event parameter or user property, and must not be registered as a custom dimension).
 
@@ -210,6 +220,9 @@ The site uses the standard shim `function gtag(){ dataLayer.push(arguments); }`.
 - Emails typed into the search box are replaced by `[email]` in `search_term`, and must not survive into
   `page_location`, `page_referrer` or `page_title` either. The schema rejects any of those four values
   that contains an email address, as `@` or URL-encoded `%40`.
+- With GA4 forwarding on, the cleaned page fields are also passed to gtag.js with `set` before each
+  `page_view` (§11). Otherwise gtag.js reads the page URL for its other hits from the address bar,
+  which still holds an email that arrived in a shared link.
 - `transaction_id` is random, not derived from the customer.
 
 ## 10. Validation and the Tag Inspector
@@ -221,6 +234,12 @@ routes it: arrays → gtag command, objects with `event` → that event's `$defs
 `{ ecommerce: null }` or `{ user_id }`. An invalid push logs `console.warn` with the errors and **is
 still pushed**: the validator is a monitor, not a gate, because silently dropping data would hide the
 bug it exists to show.
+
+Pushes that do not come from the site's tagging module are checked too. At startup the site wraps
+`dataLayer.push` once, so anything pushed another way (typed into the console, or by a third-party
+script) is validated and listed in the Tag Inspector, marked "outside push". The wrapper calls the
+push it replaced, so GTM or gtag.js wrapping it again later still works; the site's own pushes don't
+rely on the wrapper at all.
 
 **Tag Inspector.** Open the site with `?debug=1` (remembered in sessionStorage for the tab). A toggle
 button opens a drawer listing every push, newest first: event name, time, ✓ valid or ✗ with the schema
@@ -235,8 +254,9 @@ property.
 | Required parameters present, types right, no unknown keys | ✓ | ✓ every builder's output | ✓ every push in the funnel |
 | Formats: USD, SKU pattern, list ids, user_id, URLs, enums | ✓ | | |
 | No email in user_id, search, URLs, titles | ✓ | ✓ sign-in email in no push | |
-| `value` = Σ price × quantity, tax and shipping excluded | | ✓ | |
-| `{ ecommerce: null }` before each ecommerce event | | | ✓ |
+| `value` = Σ price × quantity, tax and shipping excluded | | ✓ | ✓ purchase amounts |
+| Money has at most 2 decimals (no `99.94999999999999`) | | ✓ catalog prices, value math | ✓ purchase amounts |
+| `{ ecommerce: null }` before each ecommerce event | | ✓ `track()` | ✓ |
 | Event order through the funnel | | | ✓ |
 | `purchase` once per `transaction_id`, reload included | | ✓ dedupe | ✓ reload check |
 
@@ -245,7 +265,8 @@ Stage 5 grows the end-to-end column into full tag QA.
 **Tolerated, not described.** Keys starting with `gtm.` on any event, and events named `gtm.*`, are
 accepted: Google's own libraries write them into the dataLayer (the GTM snippet pushes
 `{ event: 'gtm.js', 'gtm.start': … }`). gtag commands `js`, `config`, `set` and `event` appear only with
-GA4 forwarding on; the schema checks their shape (`config` must carry `send_page_view: false`).
+GA4 forwarding on; the schema checks their shape (`config` must carry `send_page_view: false`, `set`
+carries either `user_id` or the page fields, and `event` params may not carry a `gtm.*` key).
 
 ## 11. Optional GA4 forwarding
 
@@ -257,9 +278,16 @@ Off unless `VITE_GA4_MEASUREMENT_ID` is set at build time; no id is committed.
   history events". Google documents that it sends `page_view` on history changes even with
   `send_page_view: false`, which would double-count every page.
 - Each event is re-sent as `gtag('event', name, params)` with the `ecommerce` fields flattened into
-  `params`, the shape gtag.js expects.
+  `params`, the shape gtag.js expects. The params are built from the event, not from the object in the
+  dataLayer: once gtag.js loads it writes `gtm.uniqueEventId` into every pushed object, which would
+  otherwise travel to GA4 as a junk `ep.gtm` parameter.
+- Before each forwarded `page_view`, `gtag('set', { page_location, page_title, page_referrer })` with
+  the same cleaned values. gtag.js takes the page URL for every other hit (its automatic
+  `user_engagement`, the forwarded ecommerce events) from `document.location` unless told otherwise.
 - `user_id`: `gtag('set', { user_id })` after sign-in, `gtag('set', { user_id: null })` on sign-out
-  (Google's recommended form once the tag has loaded; `config` with `user_id` on page load also works).
+  (Google's recommended form once the tag has loaded).
+- In the GA4 web stream, also turn on data redaction for email. It is Google's best-effort second line
+  of defence against an email in a URL, behind the site's own cleaning.
 - GA4 also deduplicates purchases by `transaction_id` on web streams. That is a second line of defence,
   not a reason to skip the site's own dedupe: the raw dataLayer feed Stage 2 may collect has no such
   safety net.
@@ -274,7 +302,7 @@ Off unless `VITE_GA4_MEASUREMENT_ID` is set at build time; no id is committed.
 ## 13. Deviations from Google
 
 Where this plan is stricter than Google's reference, the site still sends valid GA4 data; the schema just
-refuses things GA4 would quietly accept.
+refuses things GA4 would quietly accept. The one place it falls short of Google is `user_id` (last row).
 
 | Topic | Google (recommended events reference, ecommerce guide) | This plan | Why |
 |---|---|---|---|
@@ -289,7 +317,8 @@ refuses things GA4 would quietly accept.
 | Items per event | up to 200 on any event | exactly 1 on `select_item`, `view_item`, `add_to_cart`, `remove_from_cart` | One action, one product. |
 | Custom parameters | up to 25 event and 27 item parameters | none | Closed objects catch typos (`transaction_Id`, `itemId`) and stray keys that GTM's merged model would carry into later events. |
 | `customer_type`, `coupon`, `discount`, `affiliation`, `item_category2`–`5`, `location_id` | optional | not sent, rejected | No backend to know new vs returning; no coupons or stores. Adding one is a contract change (§14). |
-| `page_view` | automatically collected; parameters from the page-view and SPA guides, not the recommended events reference | sent manually per route, `page_location` + `page_title` required, `page_referrer` when known | SPA: GA4's automatic page views are turned off (§11). |
+| `page_view` | automatically collected, including history-based page views for SPAs; parameters from the page-view and SPA guides, not the recommended events reference | pushed by the site per page visit, `page_location` + `page_title` required, `page_referrer` when known | So each page's events have a `page_view` in front of them in the dataLayer. GA4's own history-based page views are turned off when forwarding (§11). |
+| `user_id` | must not contain information a third party could use to determine a user's identity | an opaque random account id, issued per account (per browser in this demo) | Meets the rule. The gap is cross-device only: a real account service returns the same id everywhere (§7). |
 
 The project spec and Google agree on everything else checked: event names, the `ecommerce` object, the
 `{ ecommerce: null }` clear, `user_id` as a standalone push cleared with `null`, and the four Consent

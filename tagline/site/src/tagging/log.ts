@@ -4,8 +4,12 @@
  */
 import type { Check } from './contract'
 
+/** 'site': pushed by the site's tagging module. 'outside': the console or another script. */
+export type PushSource = 'site' | 'outside'
+
 export interface LogEntry extends Check {
   seq: number
+  source: PushSource
   /** epoch ms */
   at: number
   /** JSON-safe copy of what was pushed (gtag() calls become arrays). */
@@ -18,8 +22,8 @@ let entries: readonly LogEntry[] = []
 let seq = 0
 const listeners = new Set<() => void>()
 
-export function recordPush(payload: unknown, check: Check): void {
-  entries = [...entries, { ...check, seq: ++seq, at: Date.now(), payload }].slice(-MAX_ENTRIES)
+export function recordPush(payload: unknown, check: Check, source: PushSource = 'site'): void {
+  entries = [...entries, { ...check, source, seq: ++seq, at: Date.now(), payload }].slice(-MAX_ENTRIES)
   listeners.forEach((l) => l())
 }
 

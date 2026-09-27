@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { findProduct, formatUSD, type Product } from '../catalog/catalog'
-import { addProduct } from '../cart/cart'
+import { addProduct, getCartLines } from '../cart/cart'
 import { Swatch } from '../components/ProductGrid'
 import { useDocumentTitle, useTrackOnce } from '../hooks'
 import { viewItem } from '../tagging/events'
@@ -10,15 +10,17 @@ import { NotFound } from './NotFound'
 const QUANTITIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 function Detail({ product }: { product: Product }) {
-  const location = useLocation()
   const [quantity, setQuantity] = useState(1)
   const [status, setStatus] = useState('')
   useDocumentTitle(product.item_variant ? `${product.item_name}, ${product.item_variant}` : product.item_name)
-  useTrackOnce(`${location.key}:${product.item_id}`, () => viewItem(product))
+  useTrackOnce(product.item_id, () => viewItem(product))
 
   function add() {
     const added = addProduct(product, quantity)
-    setStatus(added > 0 ? `Added ${added} to your cart.` : 'You already have the most we allow of this item.')
+    const inCart = getCartLines().find((l) => l.product.item_id === product.item_id)?.quantity ?? 0
+    // The running total makes a second identical add a different message, so the
+    // status region announces it too.
+    setStatus(added > 0 ? `Added ${added} to your cart (${inCart} in total).` : 'You already have the most we allow of this item.')
   }
 
   return (

@@ -20,13 +20,21 @@ export interface StoredLine {
 const KEY = 'tagline.cart'
 export const MAX_QUANTITY = 20
 
+/**
+ * The stored cart, cleaned: a hand-edited cart, or one written by an older build, can
+ * hold what the UI never would. Unknown products and bad quantities are dropped,
+ * repeated ids merged, and each line capped at MAX_QUANTITY.
+ */
 function load(): readonly StoredLine[] {
   const raw = readJSON<unknown>(localStore(), KEY, [])
   if (!Array.isArray(raw)) return []
-  return raw.filter(
-    (l): l is StoredLine =>
-      typeof l?.item_id === 'string' && Number.isInteger(l?.quantity) && l.quantity > 0 && !!findProduct(l.item_id),
-  )
+  const merged = new Map<string, number>()
+  for (const l of raw) {
+    if (typeof l?.item_id === 'string' && Number.isInteger(l?.quantity) && l.quantity > 0 && findProduct(l.item_id)) {
+      merged.set(l.item_id, (merged.get(l.item_id) ?? 0) + l.quantity)
+    }
+  }
+  return [...merged].map(([item_id, quantity]) => ({ item_id, quantity: Math.min(quantity, MAX_QUANTITY) }))
 }
 
 let stored: readonly StoredLine[] = load()

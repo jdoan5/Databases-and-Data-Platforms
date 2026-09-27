@@ -1,9 +1,10 @@
 /**
- * Fake sign-in. There is no backend and no password: the email is hashed into a
- * pseudonymous user_id and then discarded. Only the id is stored or tagged.
+ * Fake sign-in. There is no password: the email only looks up (or opens) an account in
+ * the stand-in directory, whose opaque id is what gets stored and tagged.
  */
 import { localStore, readJSON, writeJSON } from '../lib/storage'
-import { clearUserId, pseudonymousUserId, pushUserId } from '../tagging/identity'
+import { clearUserId, pushUserId } from '../tagging/identity'
+import { accountIdFor } from './accounts'
 import { track } from '../tagging/track'
 import { login, signUp } from '../tagging/events'
 
@@ -18,15 +19,34 @@ let current: Session | null | undefined
 const listeners = new Set<() => void>()
 const notify = () => listeners.forEach((l) => l())
 
+/** The only shape accounts.ts issues. A stored value that doesn't match is ignored, not pushed. */
+const USER_ID = /^[0-9a-f]{32}$/
+
+function readStored(): Session | null {
+  const stored = readJSON<unknown>(localStore(), KEY, null)
+  const id = typeof stored === 'object' && stored !== null ? (stored as Partial<Session>).user_id : undefined
+  return typeof id === 'string' && USER_ID.test(id) ? { user_id: id } : null
+}
+
 export function getSession(): Session | null {
-  if (current === undefined) {
-    const stored = readJSON<unknown>(localStore(), KEY, null)
-    current =
-      typeof stored === 'object' && stored !== null && typeof (stored as Session).user_id === 'string'
-        ? { user_id: (stored as Session).user_id }
-        : null
-  }
+  if (current === undefined) current = readStored()
   return current
+}
+
+// Signing in or out in another tab changes this tab's user too: follow it, so events
+// pushed here afterwards carry the right user_id. No login event: nothing was
+// submitted in this tab, as on app start while signed in.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    // Not read yet: the first getSession() will read the new value anyway.
+    if ((e.key !== KEY && e.key !== null) || current === undefined) return
+    const next = readStored()
+    if (next?.user_id === current?.user_id) return
+    current = next
+    if (next) pushUserId(next.user_id)
+    else clearUserId()
+    notify()
+  })
 }
 
 export function subscribeSession(l: () => void): () => void {
@@ -39,7 +59,7 @@ export function subscribeSession(l: () => void): () => void {
  * carries the id in GTM's data model.
  */
 export async function signIn(email: string, mode: 'login' | 'sign_up'): Promise<Session> {
-  const user_id = await pseudonymousUserId(email)
+  const user_id = await accountIdFor(email)
   current = { user_id }
   writeJSON(localStore(), KEY, current)
   pushUserId(user_id)

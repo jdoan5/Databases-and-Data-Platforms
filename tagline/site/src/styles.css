@@ -4,6 +4,8 @@
   --text: #1d1f22;
   --muted: #5f6368;
   --line: #e2dfd8;
+  /* Borders that identify a control: at least 3:1 against the page and white (WCAG 1.4.11). */
+  --control-border: #868b90;
   --accent: #1f5c4b;
   --accent-text: #ffffff;
   --accent-soft: #e5f0ec;
@@ -100,7 +102,7 @@ button:disabled {
 input,
 select {
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   background: var(--surface);
   color: var(--text);
@@ -249,7 +251,7 @@ main:focus {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
   gap: 1rem;
   padding: 0;
   margin: 0;
@@ -489,6 +491,11 @@ code {
   box-shadow: 0 8px 30px rgb(0 0 0 / 0.12);
 }
 
+/* With ?debug=1 the Tag Inspector button sits in the bottom corner; keep the banner above it. */
+.consent:has(~ .inspector-toggle) {
+  bottom: 4.25rem;
+}
+
 .consent > div:first-child {
   flex: 1 1 24rem;
 }
@@ -624,6 +631,14 @@ code {
   color: var(--text);
 }
 
+.tag-source {
+  padding: 0 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .tag-entry time {
   margin-left: auto;
   font-family: var(--mono);
@@ -693,5 +708,13 @@ code {
   .cart-line-total {
     grid-column: 2;
     text-align: left;
+  }
+}
+
+/* Two product columns on phones, down to 320 px; auto-fill alone drops to one at 375. */
+@media (max-width: 480px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
   }
 }

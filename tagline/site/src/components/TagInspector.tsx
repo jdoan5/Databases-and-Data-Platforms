@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { sessionStore } from '../lib/storage'
 import { clearLog, getLog, subscribeLog, type LogEntry } from '../tagging/log'
 
@@ -32,10 +32,15 @@ function Entry({ entry }: { entry: LogEntry }) {
   return (
     <li className={`tag-entry ${entry.valid ? 'is-valid' : 'is-invalid'} kind-${entry.kind}`}>
       <div className="tag-entry-head">
-        <span className="tag-status" aria-label={entry.valid ? 'valid' : 'invalid'}>
+        <span className="tag-status" role="img" aria-label={entry.valid ? 'valid' : 'invalid'}>
           {entry.valid ? '✓' : '✗'}
         </span>
         <span className="tag-name">{entry.label}</span>
+        {entry.source === 'outside' && (
+          <span className="tag-source" title="Pushed from the console or another script, not by the site's tagging module">
+            outside push
+          </span>
+        )}
         <time dateTime={new Date(entry.at).toISOString()}>{time(entry.at)}</time>
       </div>
       {entry.errors.length > 0 && (
@@ -63,6 +68,14 @@ export function TagInspector() {
   const entries = useSyncExternalStore(subscribeLog, getLog)
   const [open, setOpen] = useState(() => readFlag(OPEN_KEY))
   const [eventsOnly, setEventsOnly] = useState(() => readFlag(EVENTS_ONLY_KEY))
+  const toggle = useRef<HTMLButtonElement>(null)
+  const drawer = useRef<HTMLElement>(null)
+
+  // Focus inside the drawer would fall to <body> when it unmounts; hand it back to the toggle.
+  const close = useCallback(() => {
+    if (drawer.current?.contains(document.activeElement)) toggle.current?.focus()
+    setOpen(false)
+  }, [])
 
   useEffect(() => writeFlag(OPEN_KEY, open), [open])
   // On wide screens the page reflows beside the drawer instead of hiding under it.
@@ -73,9 +86,25 @@ export function TagInspector() {
   useEffect(() => writeFlag(EVENTS_ONLY_KEY, eventsOnly), [eventsOnly])
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [open, close])
+  // Below 900 px the drawer covers the whole page. The page behind it is made inert, so
+  // Tab cannot move focus onto controls hidden under the drawer. Wider screens show the
+  // two side by side and stay as they are.
+  useEffect(() => {
+    if (!open) return
+    const wide = window.matchMedia('(min-width: 900px)')
+    const page = () =>
+      [...(toggle.current?.parentElement?.children ?? [])].filter((el) => el !== toggle.current && el !== drawer.current)
+    const apply = () => page().forEach((el) => el.toggleAttribute('inert', !wide.matches))
+    apply()
+    wide.addEventListener('change', apply)
+    return () => {
+      wide.removeEventListener('change', apply)
+      page().forEach((el) => el.removeAttribute('inert'))
+    }
   }, [open])
 
   const invalid = entries.filter((e) => !e.valid).length
@@ -84,6 +113,7 @@ export function TagInspector() {
   return (
     <>
       <button
+        ref={toggle}
         type="button"
         className={`inspector-toggle ${invalid ? 'has-invalid' : ''}`}
         aria-expanded={open}
@@ -95,7 +125,7 @@ export function TagInspector() {
       </button>
 
       {open && (
-        <aside id="tag-inspector" className="inspector" aria-label="Tag Inspector">
+        <aside ref={drawer} id="tag-inspector" className="inspector" aria-label="Tag Inspector">
           <header className="inspector-head">
             <h2>Tag Inspector</h2>
             <p>
@@ -109,7 +139,7 @@ export function TagInspector() {
               <button type="button" onClick={clearLog}>
                 Clear
               </button>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close Tag Inspector">
+              <button type="button" onClick={close} aria-label="Close Tag Inspector">
                 Close
               </button>
             </div>

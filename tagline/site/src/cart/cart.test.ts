@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { findProduct, type Product } from '../catalog/catalog'
 import type { AddToCartEvent, RemoveFromCartEvent } from '../tagging/types'
 import { addProduct, cartCount, emptyCartAfterOrder, getCartLines, MAX_QUANTITY, removeLine, removeProduct } from './cart'
@@ -49,5 +49,27 @@ describe('cart actions', () => {
     globalThis.dataLayer = []
     emptyCartAfterOrder()
     expect(globalThis.dataLayer).toEqual([])
+  })
+})
+
+describe('stored cart', () => {
+  it('merges repeated ids, caps each line at MAX_QUANTITY and drops what it cannot use', async () => {
+    vi.resetModules()
+    const storage = await import('../lib/storage')
+    storage.localStore().setItem(
+      'tagline.cart',
+      JSON.stringify([
+        { item_id: 'TL-DRK-001', quantity: 500 },
+        { item_id: 'TL-APP-001', quantity: 1 },
+        { item_id: 'TL-APP-001', quantity: 2 },
+        { item_id: 'TL-XXX-999', quantity: 1 },
+        { item_id: 'TL-BAG-001', quantity: 1.5 },
+      ]),
+    )
+    const fresh = await import('./cart')
+    expect(fresh.getCartLines().map((l) => [l.product.item_id, l.quantity])).toEqual([
+      ['TL-DRK-001', MAX_QUANTITY],
+      ['TL-APP-001', 3],
+    ])
   })
 })

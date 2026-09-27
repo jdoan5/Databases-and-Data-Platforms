@@ -74,7 +74,7 @@
     },
 
     "event_name": {
-      "description": "The 14 events in the contract: 13 GA4 recommended events plus page_view, GA4's automatically collected page view, sent manually here because the site is a single-page app. Adding one means a new $defs entry, a row in the plan and a builder test.",
+      "description": "The 14 events in the contract: 13 GA4 recommended events plus page_view. GA4 can collect page views on its own, even in a single-page app; the site pushes page_view itself so each page's events have one in front of them in the dataLayer, and GA4's own history-based page views are turned off when forwarding. Adding an event means a new $defs entry, a row in the plan and a builder test.",
       "type": "string",
       "enum": [
         "page_view",
@@ -115,7 +115,7 @@
     },
 
     "pseudonymous_id": {
-      "description": "The user_id: 32 lowercase hex characters, the first 128 bits of SHA-256 over a site prefix plus the normalised email. It cannot hold an email address, a name or a username. The email itself never enters the dataLayer.",
+      "description": "The user_id: 32 lowercase hex characters, an opaque account id (128 random bits issued per account, not derived from the email). The pattern guarantees no raw email, name or username is sent; that the id is random is a code rule (site/src/auth/accounts.ts), not something a pattern can check. The email itself never enters the dataLayer.",
       "type": "string",
       "pattern": "^[0-9a-f]{32}$",
       "examples": ["3f1c9a0b7d2e4f6a8b0c1d2e3f4a5b6c"]
@@ -128,7 +128,7 @@
     },
 
     "value": {
-      "description": "Σ price × quantity over the event's items, before tax and shipping, rounded to cents. A number, never a string.",
+      "description": "Σ price × quantity over the event's items, before tax and shipping. A number, never a string. The site sums in integer cents, so it has at most 2 decimals; this schema checks only that it is a positive number, and the unit tests check the arithmetic and the cents.",
       "type": "number",
       "exclusiveMinimum": 0,
       "examples": [41.97]
@@ -166,7 +166,7 @@
         },
         "item_variant": { "$ref": "#/$defs/text", "examples": ["White"] },
         "price": {
-          "description": "Unit price in USD, a number with at most 2 decimals.",
+          "description": "Unit price in USD, > 0. Catalog prices have at most 2 decimals; the catalog unit test checks that, this schema does not.",
           "type": "number",
           "exclusiveMinimum": 0,
           "examples": [13.99]
@@ -227,7 +227,7 @@
 
     "page_view": {
       "title": "page_view",
-      "description": "One virtual page view per navigation (react-router location.key), including the first load. Never per re-render.",
+      "description": "One virtual page view per page visit, including the first load: a new history entry, Back/Forward, or a replace that changes the URL. Never per re-render, and not for a click on a link to the page already shown (react-router turns that into a replace to the same URL).",
       "type": "object",
       "required": ["event", "page_location", "page_title"],
       "properties": {
@@ -245,7 +245,7 @@
           "minLength": 1,
           "maxLength": 300,
           "not": { "$ref": "#/$defs/looks_like_email" },
-          "examples": ["Ceramic Mug · Tagline Supply"]
+          "examples": ["Ceramic Mug, White · Tagline Supply"]
         },
         "page_referrer": {
           "description": "Previous page_location on in-app navigation; document.referrer on the first load when it is non-empty. Omitted, never empty, when unknown. GA4 limit 420 characters.",
@@ -587,7 +587,7 @@
     },
 
     "gtag_consent_default": {
-      "description": "['consent', 'default', {...}]: all four v2 consent types set, all denied. wait_for_update and region are Google's optional default-only settings.",
+      "description": "['consent', 'default', {...}]: all four v2 consent types set, all denied, and nothing else.",
       "type": "array",
       "prefixItems": [
         { "const": "consent" },
@@ -599,13 +599,7 @@
             "analytics_storage": { "const": "denied" },
             "ad_storage": { "const": "denied" },
             "ad_user_data": { "const": "denied" },
-            "ad_personalization": { "const": "denied" },
-            "wait_for_update": { "type": "integer", "minimum": 1 },
-            "region": {
-              "type": "array",
-              "items": { "type": "string", "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$" },
-              "minItems": 1
-            }
+            "ad_personalization": { "const": "denied" }
           },
           "additionalProperties": false
         }
@@ -645,7 +639,7 @@
     },
 
     "gtag_config": {
-      "description": "['config', 'G-…', {...}]: GA4 forwarding only. send_page_view must be false because the site sends its own page_view per route. user_id is Google's documented config parameter for a signed-in user.",
+      "description": "['config', 'G-…', { send_page_view: false }]: GA4 forwarding only. send_page_view must be false because the site sends its own page_view per page. user_id goes through set, not config.",
       "type": "array",
       "prefixItems": [
         { "const": "config" },
@@ -654,14 +648,7 @@
           "type": "object",
           "required": ["send_page_view"],
           "properties": {
-            "send_page_view": { "const": false },
-            "debug_mode": { "type": "boolean" },
-            "user_id": {
-              "anyOf": [
-                { "$ref": "#/$defs/pseudonymous_id" },
-                { "type": "null" }
-              ]
-            }
+            "send_page_view": { "const": false }
           },
           "additionalProperties": false
         }
@@ -671,22 +658,36 @@
     },
 
     "gtag_set": {
-      "description": "['set', { user_id }]: GA4 forwarding only. Google's recommended way to set user_id after the tag has loaded, and to clear it with null on sign-out.",
+      "description": "['set', {...}]: GA4 forwarding only, in one of two forms. { user_id }: Google's recommended way to set user_id after the tag has loaded, and to clear it with null on sign-out. { page_location, page_title, page_referrer }: the cleaned values of the page_view about to be forwarded, so every later hit on the page, including the ones gtag.js sends on its own, uses them instead of the raw document.location.",
       "type": "array",
       "prefixItems": [
         { "const": "set" },
         {
-          "type": "object",
-          "required": ["user_id"],
-          "properties": {
-            "user_id": {
-              "anyOf": [
-                { "$ref": "#/$defs/pseudonymous_id" },
-                { "type": "null" }
-              ]
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["user_id"],
+              "properties": {
+                "user_id": {
+                  "anyOf": [
+                    { "$ref": "#/$defs/pseudonymous_id" },
+                    { "type": "null" }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["page_location", "page_title"],
+              "properties": {
+                "page_location": { "$ref": "#/$defs/page_view/properties/page_location" },
+                "page_title": { "$ref": "#/$defs/page_view/properties/page_title" },
+                "page_referrer": { "$ref": "#/$defs/page_view/properties/page_referrer" }
+              },
+              "additionalProperties": false
             }
-          },
-          "additionalProperties": false
+          ]
         }
       ],
       "minItems": 2,
@@ -694,12 +695,12 @@
     },
 
     "gtag_event": {
-      "description": "['event', name, params]: GA4 forwarding only, a copy of an event already validated as a dataLayer push (ecommerce fields flattened into params, as gtag.js expects). Only the name is checked here.",
+      "description": "['event', name, params]: GA4 forwarding only, a copy of an event already validated as a dataLayer push (ecommerce fields flattened into params, as gtag.js expects). Checked here: the name, and that no gtm.* key rides along (gtag.js would send it as a junk ep.gtm parameter).",
       "type": "array",
       "prefixItems": [
         { "const": "event" },
         { "$ref": "#/$defs/event_name" },
-        { "type": "object" }
+        { "type": "object", "propertyNames": { "type": "string", "not": { "pattern": "^gtm\\." } } }
       ],
       "minItems": 3,
       "items": false

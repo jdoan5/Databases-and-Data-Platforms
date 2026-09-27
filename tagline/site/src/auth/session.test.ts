@@ -1,7 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import schema from '../../../tagging/events.schema.json'
 import { createContract, toPayload, type JsonSchema } from '../tagging/contract'
-import { pseudonymousUserId } from '../tagging/identity'
 import { getSession, signIn, signOut } from './session'
 
 const contract = createContract(schema as JsonSchema)
@@ -44,12 +43,24 @@ describe('fake sign-in', () => {
   it('does not keep the email in storage either', async () => {
     await signIn(EMAIL, 'login')
     expect(JSON.stringify(getSession()).toLowerCase()).not.toContain('example.com')
+    const storage = await import('../lib/storage')
+    expect((storage.localStore().getItem('tagline.accounts') ?? '').toLowerCase()).not.toContain('example.com')
   })
 
-  it('derives a stable id: same email in any case or padding, same id; different email, different id', async () => {
-    const a = await pseudonymousUserId(EMAIL)
-    expect(await pseudonymousUserId(`  ${EMAIL.toUpperCase()} `)).toBe(a)
-    expect(await pseudonymousUserId('someone.else@example.com')).not.toBe(a)
+  it('keeps one account id per email in this browser, in any case or padding; another email gets another id', async () => {
+    const a = (await signIn(EMAIL, 'sign_up')).user_id
+    signOut()
+    expect((await signIn(`  ${EMAIL.toUpperCase()} `, 'login')).user_id).toBe(a)
+    signOut()
+    expect((await signIn('someone.else@example.com', 'login')).user_id).not.toBe(a)
+  })
+
+  it('issues a random id, not one computed from the email (Google User-ID rule)', async () => {
+    const first = (await signIn(EMAIL, 'sign_up')).user_id
+    signOut()
+    const storage = await import('../lib/storage')
+    storage.localStore().removeItem('tagline.accounts') // a fresh browser: nothing to look up
+    expect((await signIn(EMAIL, 'sign_up')).user_id).not.toBe(first)
   })
 
   it('clears user_id with null on sign-out', async () => {
@@ -57,6 +68,37 @@ describe('fake sign-in', () => {
     signOut()
     expect(globalThis.dataLayer?.at(-1)).toEqual({ user_id: null })
     expect(getSession()).toBeNull()
+  })
+
+  it('ignores a stored session whose id is not 32 hex characters, rather than pushing it on app start', async () => {
+    vi.resetModules()
+    const storage = await import('../lib/storage')
+    storage.localStore().setItem('tagline.session', JSON.stringify({ user_id: 'jo.doan@example.com' }))
+    const fresh = await import('./session')
+    expect(fresh.getSession()).toBeNull()
+  })
+
+  it('follows a sign-in or sign-out in another tab: user_id pushed or cleared, and no login event', async () => {
+    vi.resetModules()
+    const onStorage: ((e: { key: string | null }) => void)[] = []
+    vi.stubGlobal('window', { addEventListener: (type: string, l: (typeof onStorage)[number]) => type === 'storage' && onStorage.push(l) })
+    const storage = await import('../lib/storage')
+    const fresh = await import('./session')
+    vi.unstubAllGlobals()
+    const otherTab = (value: string | null) => {
+      if (value === null) storage.localStore().removeItem('tagline.session')
+      else storage.localStore().setItem('tagline.session', value)
+      onStorage.forEach((l) => l({ key: 'tagline.session' }))
+    }
+    const id = '0123456789abcdef0123456789abcdef'
+    expect(fresh.getSession()).toBeNull() // app start, signed out
+    globalThis.dataLayer = []
+    otherTab(JSON.stringify({ user_id: id }))
+    expect(fresh.getSession()).toEqual({ user_id: id })
+    otherTab(JSON.stringify({ user_id: id })) // same user: nothing new to push
+    otherTab(null)
+    expect(fresh.getSession()).toBeNull()
+    expect(globalThis.dataLayer).toEqual([{ user_id: id }, { user_id: null }])
   })
 
   it('pushes only entries the contract accepts', async () => {

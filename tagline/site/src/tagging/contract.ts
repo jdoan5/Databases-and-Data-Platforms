@@ -57,7 +57,11 @@ function formatError(e: ErrorObject): string {
       return `${where}: must be ${JSON.stringify(e.params.allowedValue)}`
     case 'enum':
       return `${where}: must be one of ${(e.params.allowedValues as unknown[]).map((v) => JSON.stringify(v)).join(', ')}`
+    case 'propertyNames':
+      return `${where}: property "${String(e.params.propertyName)}" is not allowed here`
     case 'not':
+      // Inside propertyNames the error above already names the key.
+      if (e.propertyName !== undefined) return ''
       return `${where}: matches a forbidden pattern (looks like an email address?)`
     case 'if':
       // Ajv reports the branch that failed separately; this line adds nothing.

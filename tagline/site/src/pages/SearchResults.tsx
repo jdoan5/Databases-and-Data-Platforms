@@ -1,4 +1,4 @@
-import { Link, useLocation, useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { searchProducts } from '../catalog/catalog'
 import { ProductGrid } from '../components/ProductGrid'
 import { useDocumentTitle, useTrackOnce } from '../hooks'
@@ -12,13 +12,12 @@ const SEARCH_LIST = { id: 'search_results', name: 'Search results' }
  * This page pushes the results as a view_item_list, or nothing if there are none.
  */
 export function SearchResults() {
-  const location = useLocation()
   const [params] = useSearchParams()
   // Cleaned again here in case the URL was typed or shared rather than submitted.
   const term = cleanSearchTerm(params.get('q') ?? '')
   const results = searchProducts(term)
   useDocumentTitle(term ? `Search: ${term}` : 'Search')
-  useTrackOnce(location.key, () => (results.length ? viewItemList(SEARCH_LIST, results) : null))
+  useTrackOnce(SEARCH_LIST.id, () => (results.length ? viewItemList(SEARCH_LIST, results) : null))
 
   return (
     <>

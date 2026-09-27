@@ -3,7 +3,7 @@
  * localStorage so the confirmation page survives a reload (which is exactly the
  * case the purchase dedupe has to handle).
  */
-import type { Product } from '../catalog/catalog'
+import { findProduct, type Product } from '../catalog/catalog'
 import { localStore, readJSON, writeJSON } from '../lib/storage'
 import { fromCents, linesValue, toCents, type CartLine } from '../tagging/events'
 
@@ -70,8 +70,41 @@ export function placeOrder(lines: readonly CartLine[], tier: ShippingTier, payme
   return order
 }
 
+const isMoney = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
+
+/**
+ * A stored order is checked before it is shown or tagged, like the cart and the
+ * session: one written by an older build, or edited by hand, reads as "not found"
+ * rather than breaking the page.
+ */
+function isOrder(o: unknown): o is Order {
+  if (typeof o !== 'object' || o === null) return false
+  const r = o as Record<string, unknown>
+  return (
+    typeof r.transaction_id === 'string' &&
+    SHIPPING_TIERS.some((t) => t.id === r.shipping_tier) &&
+    (PAYMENT_TYPES as readonly unknown[]).includes(r.payment_type) &&
+    [r.value, r.tax, r.shipping, r.total].every(isMoney) &&
+    Array.isArray(r.lines) &&
+    r.lines.length > 0 &&
+    r.lines.every((l: { product?: Partial<Product>; quantity?: unknown }) => {
+      const p = l?.product
+      return (
+        typeof p?.item_id === 'string' &&
+        !!findProduct(p.item_id) &&
+        typeof p.item_name === 'string' &&
+        isMoney(p.price) &&
+        p.price > 0 &&
+        Number.isInteger(l.quantity) &&
+        (l.quantity as number) > 0
+      )
+    })
+  )
+}
+
 export function findOrder(transactionId: string | undefined): Order | undefined {
   if (!transactionId) return undefined
-  const orders = readJSON<Order[]>(localStore(), KEY, [])
-  return Array.isArray(orders) ? orders.find((o) => o.transaction_id === transactionId) : undefined
+  const orders = readJSON<unknown>(localStore(), KEY, [])
+  const order = Array.isArray(orders) ? orders.find((o) => o?.transaction_id === transactionId) : undefined
+  return isOrder(order) ? order : undefined
 }

@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useParams } from 'react-router'
+import { NavLink, useParams } from 'react-router'
 import { CATEGORIES, categoryFromSlug, categorySlug, products, productsInCategory, type Product } from '../catalog/catalog'
 import { ProductGrid } from '../components/ProductGrid'
 import { useDocumentTitle, useTrackOnce } from '../hooks'
@@ -21,9 +21,8 @@ function CategoryNav() {
 }
 
 function Listing({ heading, list, items }: { heading: string; list: ItemList; items: readonly Product[] }) {
-  const location = useLocation()
   useDocumentTitle(heading)
-  useTrackOnce(`${location.key}:${list.id}`, () => viewItemList(list, items))
+  useTrackOnce(list.id, () => viewItemList(list, items))
   return (
     <>
       <h1>{heading}</h1>

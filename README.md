@@ -5,7 +5,8 @@
 SQL and database engineering on one inventory domain: a schema with real
 constraints and triggers, that same schema scaled to five million rows and tuned
 with measurements rather than guesses, and a small API + dashboard reading from
-it.
+it. Plus one project on Google Cloud, in progress: from the tags on a website to
+monitored KPIs.
 
 Everything here is synthetic data generated from a fixed seed. No customer or
 production data.
@@ -46,6 +47,24 @@ make up && make reset && make check && make bench
 
 Needs Docker and nothing else — there is no `psql` on the host path and none is
 required; every SQL call goes through the container.
+
+### [`tagline/`](tagline/) — site tags to trusted KPIs on Google Cloud (in progress)
+
+Stage 1 of 6: a small React storefront tagged with GA4's recommended ecommerce
+events, a [tagging plan](tagline/docs/tagging-plan.md) checked against Google's
+docs, and a [JSON Schema contract](tagline/tagging/events.schema.json) that every
+tag is validated against as it fires, visible in a Tag Inspector at `?debug=1`.
+A Playwright test walks the whole funnel and fails if an event is missing,
+malformed, out of order, or (for `purchase`) sent twice. Next: stitch and enrich
+the data in BigQuery, PySpark on Dataproc run by Airflow, cost and run-time
+tuning measured like the Postgres work above, then tag QA and KPI alerts.
+
+```bash
+cd tagline/site
+npm install && npm run dev    # http://localhost:5173/?debug=1
+```
+
+Node 22.22+ or 24.
 
 ### [`Centralized Inventory Management System/`](Centralized%20Inventory%20Management%20System/) — the schema everything else uses
 

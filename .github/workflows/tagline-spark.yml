@@ -1,0 +1,52 @@
+name: tagline-spark
+
+# Unit tests for the Tagline Stage 3 attribution job (tagline/spark): the journey rules, the six
+# attribution models and their invariants on a local SparkSession, the entrypoint with BigQuery
+# replaced by local DataFrames, and the Dataproc batch definition the Airflow DAG shares.
+#
+# Same versions as the Dataproc Serverless runtime the job runs on (3.0): Python 3.12, Java 21,
+# pyspark 4.0.2 (pinned in tagline/spark/pyproject.toml). No Google Cloud access: no secrets, and
+# the tests make no network calls beyond installing packages.
+
+on:
+  push:
+    paths:
+      - "tagline/spark/**"
+      - ".github/workflows/tagline-spark.yml"
+  pull_request:
+    paths:
+      - "tagline/spark/**"
+      - ".github/workflows/tagline-spark.yml"
+  workflow_dispatch:
+
+# Least privilege: the job only reads the repository.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: tagline/spark
+
+jobs:
+  spark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tagline/spark/pyproject.toml
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install pyspark, pytest and the Google Cloud clients
+        run: pip install -e '.[dev,submit]'
+
+      - name: Unit tests (pytest, local Spark)
+        run: python -m pytest -q

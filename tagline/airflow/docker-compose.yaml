@@ -1,0 +1,171 @@
+# Airflow 3, locally, for tagline_daily (tagline/docs/orchestration.md).
+#
+# Run it through make from tagline/ (make airflow-up / airflow-check / airflow-test / airflow-down):
+# make passes two env files to compose, tagline/.env (project, bucket, service account) and
+# airflow/.env (generated on the first `make airflow-up`: Airflow UID, Postgres password, JWT secret,
+# Fernet key). Both are gitignored.
+#
+# Deliberately small: the official image, LocalExecutor (tasks run as processes of the scheduler
+# container), Postgres for the metadata database, and the three Airflow 3 components that must run:
+# api-server (UI and the task execution API), scheduler, dag-processor. No Celery, Redis or
+# triggerer: nothing in the DAG defers.
+#
+# Every service has `restart: "no"`: the stack runs only between `make airflow-up` and
+# `make airflow-down` (or until Docker Desktop quits), and never comes back by itself when Docker
+# Desktop starts. With a restart policy, an unpaused tagline_daily would start an unwatched run
+# (a Stage 2 rebuild and a Spark batch) every time Docker came up after a missed 10:00 UTC.
+#
+# Google Cloud auth is the user's application-default credentials file, mounted read-only and
+# pointed to by GOOGLE_APPLICATION_CREDENTIALS, in the two containers that run tasks or one-off
+# commands only: airflow-scheduler (LocalExecutor runs every task there) and airflow-cli. The
+# api-server (the one published port), the dag-processor and airflow-init make no Google Cloud calls
+# and never see it: it is a refresh token with the user's own, project-Owner, access. Local
+# development only: nothing is copied into the repo or an image. On Cloud Composer the environment's
+# service account replaces it.
+
+name: tagline-airflow
+
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE:-apache/airflow:3.3.2}
+  user: "${AIRFLOW_UID:-50000}:0"
+  env_file:
+    - path: ../.env  # TAGLINE_* for the Stage 2 package and the DAG
+      required: true
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__PARALLELISM: "8"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_POSTGRES_PASSWORD:?run make airflow-up from tagline/}@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?run make airflow-up from tagline/}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?run make airflow-up from tagline/}
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/secrets/simple_auth_manager_passwords.json
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"  # nothing runs (or bills) until you unpause or trigger
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Google Cloud: the project and the connection the operators use (no key: ADC, which only the
+    # scheduler and airflow-cli have; see x-gcp-adc below).
+    GOOGLE_CLOUD_PROJECT: ${TAGLINE_GCP_PROJECT:?set TAGLINE_GCP_PROJECT in tagline/.env}
+    AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT: '{"conn_type": "google_cloud_platform", "extra": {"project": "${TAGLINE_GCP_PROJECT}"}}'
+    # The Stage 2 package and the Spark job's batch definition (tagline_spark), imported by the DAG
+    # straight from their (read-only) source trees.
+    PYTHONPATH: /opt/tagline/pipeline:/opt/tagline/spark
+    PYTHONDONTWRITEBYTECODE: "1"
+  volumes: &airflow-volumes
+    - ./dags:/opt/airflow/dags:ro
+    - ./tests:/opt/airflow/tests:ro
+    - ./logs:/opt/airflow/logs
+    - ../pipeline:/opt/tagline/pipeline:ro
+    - ../spark:/opt/tagline/spark:ro
+  depends_on: &airflow-depends-on
+    postgres:
+      condition: service_healthy
+
+# The user's ADC file, for the containers that call Google Cloud (see the top of this file).
+x-gcp-adc:
+  file: &gcp-adc-mount ${GCP_ADC_FILE:-${HOME}/.config/gcloud/application_default_credentials.json}:/opt/airflow/gcp/application_default_credentials.json:ro
+  path: &gcp-adc-path /opt/airflow/gcp/application_default_credentials.json
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD:?run make airflow-up from tagline/}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+      start_period: 5s
+    restart: "no"
+
+  airflow-init:  # migrates the metadata database, then exits
+    <<: *airflow-common
+    command: ["db", "migrate"]
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ./logs:/opt/airflow/logs
+      - ./.secrets:/opt/airflow/secrets  # the admin login (generated by scripts/init-secrets.sh)
+      - ../pipeline:/opt/tagline/pipeline:ro
+      - ../spark:/opt/tagline/spark:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: "no"
+    depends_on:
+      <<: *airflow-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:  # runs every task (LocalExecutor), so it has the ADC
+    <<: *airflow-common
+    command: scheduler
+    environment:
+      <<: *airflow-env
+      GOOGLE_APPLICATION_CREDENTIALS: *gcp-adc-path
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ./tests:/opt/airflow/tests:ro
+      - ./logs:/opt/airflow/logs
+      - ../pipeline:/opt/tagline/pipeline:ro
+      - ../spark:/opt/tagline/spark:ro
+      - *gcp-adc-mount
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: "no"
+    depends_on:
+      <<: *airflow-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
+    restart: "no"
+    depends_on:
+      <<: *airflow-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-cli:  # one-off commands: make airflow-check runs the DagBag test here, without the database
+    <<: *airflow-common
+    profiles: ["cli"]
+    environment:
+      <<: *airflow-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+      GOOGLE_APPLICATION_CREDENTIALS: *gcp-adc-path
+    volumes:
+      - ./dags:/opt/airflow/dags:ro
+      - ./tests:/opt/airflow/tests:ro
+      - ./logs:/opt/airflow/logs
+      - ../pipeline:/opt/tagline/pipeline:ro
+      - ../spark:/opt/tagline/spark:ro
+      - *gcp-adc-mount
+    depends_on: {}
+
+volumes:
+  airflow-db:

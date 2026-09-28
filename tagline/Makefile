@@ -1,9 +1,12 @@
 # Tagline
 #
 # Stage 1 is the tagged site; Stage 2 turns GA4 export data into stitched, enriched tables
-# in BigQuery. The project id comes from tagline/.env (copy .env.example; gitignored).
+# in BigQuery; Stage 3 runs multi-touch attribution in PySpark on Dataproc Serverless and
+# orchestrates everything with Airflow (locally, in Docker). The project id and the Stage 3
+# settings come from tagline/.env (copy .env.example; gitignored).
 #
 #   make setup && make test && make reference && make build && make numbers
+#   make airflow-up && make airflow-check && make airflow-test && make airflow-down
 
 SHELL := /bin/bash
 
@@ -90,3 +93,76 @@ simulate-e2e: ## simulator end-to-end: a short dry run in Chrome, asserting the 
 	cd simulator && npm run test:e2e
 
 test: test-pipeline test-simulator ## every unit test that needs no browser and no BigQuery (plus: make test-site)
+
+# --- Stage 3: Airflow (local, Docker) -------------------------------------------------
+
+# Compose reads tagline/.env (project, bucket, service account) and airflow/.env (generated on the
+# first airflow-up by airflow/scripts/init-secrets.sh). Both are gitignored.
+AIRFLOW_COMPOSE := docker compose -f airflow/docker-compose.yaml --env-file .env --env-file airflow/.env
+AIRFLOW_INIT    := airflow/scripts/init-secrets.sh
+
+# make airflow-test AIRFLOW_DATE=2026-09-27 AIRFLOW_CONF='{"attribution": false}'
+AIRFLOW_DATE ?= $(shell date -u +%F)
+AIRFLOW_CONF ?=
+
+# make airflow-orphans CANCEL=1 cancels what it lists
+CANCEL ?=
+
+.PHONY: airflow-up airflow-down airflow-check airflow-test airflow-orphans
+
+airflow-up: ## start Airflow 3 in Docker (http://localhost:8080); the first run generates the admin login
+	@$(AIRFLOW_INIT)
+	$(AIRFLOW_COMPOSE) up -d --wait
+	@echo "Airflow: http://localhost:$${AIRFLOW_PORT:-8080}  (user admin; password in airflow/.secrets/simple_auth_manager_passwords.json)"
+	@echo "tagline_daily is created paused; unpausing it starts the latest 10:00 UTC run at once (Stage 2 rebuild + Spark batch)"
+
+airflow-down: ## stop Airflow; the metadata database (runs, pause state) is kept, and nothing restarts on its own
+	$(AIRFLOW_COMPOSE) down
+
+airflow-orphans: ## Dataproc batches tagline_daily left running (after a crash); CANCEL=1 cancels them
+	@CANCEL='$(CANCEL)' airflow/scripts/orphan-batches.sh
+
+airflow-check: ## DagBag import test for tagline_daily, in the Airflow image: no Google Cloud calls
+	@$(AIRFLOW_INIT)
+	$(AIRFLOW_COMPOSE) run --rm --no-deps airflow-cli python /opt/airflow/tests/test_dag.py
+
+airflow-test: ## LIVE: airflow dags test tagline_daily end to end (BigQuery + Dataproc; costs cents); needs airflow-up
+	$(AIRFLOW_COMPOSE) exec airflow-scheduler airflow dags test tagline_daily $(AIRFLOW_DATE) $(if $(AIRFLOW_CONF),--conf '$(AIRFLOW_CONF)',)
+
+# --- Stage 3: the Spark attribution job (Dataproc Serverless) ------------------------------
+
+# The batch (runtime 3.0 = Spark 4.0.2, TTL, labels, resources, code URIs) is spark/tagline_spark/batch.py,
+# the same definition the DAG submits. Project, region, bucket and service account: tagline/.env.
+SPARK_DIR := spark
+SPARK_PY  := .venv/bin/python
+# Spark 4.0 runs on Java 17 or 21, not the newer default JDK: the tests use a Java 21 (macOS java_home).
+SPARK_JAVA_HOME ?= $(shell /usr/libexec/java_home -v 21 2>/dev/null)
+SPARK_ENV := $(if $(SPARK_JAVA_HOME),JAVA_HOME=$(SPARK_JAVA_HOME),)
+# make spark-status BATCH=tagline-attr-...  (default: the latest attribution batch)
+BATCH ?=
+
+.PHONY: spark-venv spark-test spark-upload spark-submit spark-status spark-report spark-cancel
+
+spark-venv: ## create spark/.venv (Python 3.12+): pyspark pinned to the runtime's Spark, pytest, Google Cloud clients
+	@test -n "$(PYTHON)" || { echo "no Python 3.12+ on PATH (try: brew install python@3.14)"; exit 2; }
+	cd $(SPARK_DIR) && $(PYTHON) -m venv .venv && .venv/bin/pip install -q --upgrade pip && .venv/bin/pip install -q -e '.[dev,submit]'
+	@echo "created $(SPARK_DIR)/.venv with $$($(SPARK_DIR)/.venv/bin/python --version)"
+
+spark-test: ## Spark unit tests on a local SparkSession (Java 21): journeys, the six models, invariants, the batch
+	cd $(SPARK_DIR) && $(SPARK_ENV) $(SPARK_PY) -m pytest -q
+
+spark-upload: ## upload the job's code to gs://<bucket>/code/attribution/<version>/ (the DAG runs that version)
+	cd $(SPARK_DIR) && $(SPARK_PY) -m tagline_spark.submit upload
+
+spark-submit: ## LIVE: upload, run the attribution batch on Dataproc Serverless, wait; wall time, DCU usage, cost
+	cd $(SPARK_DIR) && $(SPARK_PY) -m tagline_spark.submit submit
+
+spark-status: ## a batch's state, wall time, DCU usage and cost (BATCH=<id>, default the latest); any still running
+	cd $(SPARK_DIR) && $(SPARK_PY) -m tagline_spark.submit status $(BATCH)
+
+spark-report: ## channel credit by model (all orders, complete-lookback orders), last_click vs Stage 2 (3 small queries)
+	cd $(SPARK_DIR) && $(SPARK_PY) -m tagline_spark.report
+
+spark-cancel: ## cancel a batch: make spark-cancel BATCH=<id>
+	@test -n "$(BATCH)" || { echo "usage: make spark-cancel BATCH=<batch id>"; exit 2; }
+	cd $(SPARK_DIR) && $(SPARK_PY) -m tagline_spark.submit cancel $(BATCH)

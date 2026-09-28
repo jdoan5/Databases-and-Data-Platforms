@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tagline-spark"
+version = "0.3.0"
+description = "Tagline Stage 3: multi-touch attribution in PySpark on Serverless for Apache Spark (Dataproc Serverless)."
+# The Dataproc runtime (3.0: Python 3.12) provides pyspark, the BigQuery connector and google-cloud-bigquery,
+# so the job itself installs nothing there. Locally: the venv from `make spark-venv`.
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+# pyspark is pinned to the Spark version of the runtime in tagline_spark/batch.py (tests/test_batch.py checks it).
+dev = ["pyspark==4.0.2", "pytest>=8"]
+# make spark-submit / spark-status: upload the code and drive batches from this machine.
+submit = [
+  "google-cloud-dataproc>=5.20,<6",
+  "google-cloud-storage>=2.18,<4",
+  "google-cloud-bigquery>=3.25,<4",
+]
+
+[tool.setuptools]
+packages = ["attribution", "tagline_spark"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Run from source, as the Stage 2 package is (see pipeline/pyproject.toml): an editable install's .pth file
+# can be skipped on macOS when the venv under ~/Documents gets the "hidden" flag.
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning:pyspark.*"]

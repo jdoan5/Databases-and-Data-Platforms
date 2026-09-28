@@ -24,14 +24,14 @@ bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*        (source: ga
   daily tables, plus streaming tables for days with no daily table ────┤    is set and has tables)
                                                                        ▼
                                              tagline_staging.stg_events ──► tagline_staging.stg_items
-                                                          │
-                                                          ├──► tagline_staging.int_identity
-                                                          ▼            │
-                                             tagline_marts.fct_sessions ◄┘
-                                                          │
-                                                          ▼
+                                                          │                                     │
+                                                          ├──► tagline_staging.int_identity     │
+                                                          ▼            │                        │
+                                             tagline_marts.fct_sessions ◄┘                      │
+                                                          │                                     │
+                                                          ▼                                     ▼
                                              tagline_marts.fct_orders ──► tagline_marts.fct_order_items
-                                                          │                        ▲
+                                                          │                       ▲
 tagline/site/src/catalog/products.json ──► tagline_raw.products ──────────────────┘
   + SYNTHETIC unit_cost (reference.py)
 
@@ -46,6 +46,8 @@ Build order is the numeric prefix of the model files: `10_stg_events`, `20_stg_i
 `70_mart_campaign_daily`, `80_mart_funnel_daily`. `stg_`/`int_` models build into
 `tagline_staging`, `fct_`/`mart_` into `tagline_marts`. `fct_orders` also reads `stg_events`
 (the purchase events) and `int_identity` (the person of an order placed in no session).
+`fct_order_items` reads three tables: the order from `fct_orders`, its lines from `stg_items`
+(the kept purchase event's items) and the catalog cost from `tagline_raw.products`.
 
 ---
 
@@ -363,3 +365,27 @@ items). `fct_orders` reports purchase revenue; `fct_order_items` reports what th
 
 A full build plus checks processes 8.57 GiB and bills 8.62 GiB, about $0.05 at on-demand
 prices; `stg_events` is 3.34 GiB of it. The cost table in the README has the breakdown.
+
+---
+
+## Stage 3 tables
+
+Built by the attribution job in `tagline/spark/` (PySpark on Dataproc Serverless, not SQL), which
+reads `fct_orders` and `fct_sessions` and overwrites both tables on every run; the rules are in
+[spark/README.md](../spark/README.md#the-rules), the checks on them in
+`airflow/dags/tagline_airflow/sql/attribution_checks/`. Like Stage 2's tables, both carry a table
+description and a description on every column (the job refuses to finish otherwise), labelled
+`app:tagline, stage:3`.
+
+```
+tagline_marts.fct_orders ───┬──► tagline_marts.fct_attribution ──► tagline_marts.mart_attribution_daily
+tagline_marts.fct_sessions ─┘
+```
+
+| Table | One row per | Key | Partition | Rows (sample) |
+|---|---|---|---|---|
+| `tagline_marts.fct_attribution` | order × attribution model × touch (session) | `source, order_id, model, session_key` | `order_date` | 73,890 (4,918 orders, 12,315 touches, 6 models) |
+| `tagline_marts.mart_attribution_daily` | order date × source × model × session source / medium / campaign × `lookback_complete` | all seven | `order_date` | 5,532 (4,982 with credit) |
+
+Every touch appears under every model, weight 0 included, so the mart has rows with 0 attributed
+orders. As with Stage 2's facts, the date partitions prune nothing at this volume.

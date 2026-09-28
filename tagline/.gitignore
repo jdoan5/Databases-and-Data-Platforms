@@ -1,8 +1,9 @@
 # Local configuration: holds the Google Cloud project id. Copy .env.example to .env.
 .env
 
-# The pipeline's virtual environment and Python caches
+# The pipeline's and the Spark job's virtual environments, and Python caches
 pipeline/.venv/
+spark/.venv/
 __pycache__/
 *.egg-info/
 .pytest_cache/

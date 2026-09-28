@@ -8,9 +8,11 @@ contract; later stages take those events through BigQuery, PySpark on Dataproc
 and Airflow to KPIs, then measure what that costs and alert when the tags or the
 numbers go wrong.
 
-This folder holds Stage 1 (the tagged site, the tagging plan, and the contract) and
+This folder holds Stage 1 (the tagged site, the tagging plan, and the contract),
 Stage 2 (a BigQuery pipeline that stitches and enriches GA4 export data, and a traffic
-simulator for the site). Stage 2 is [below](#stage-2-stitch-and-enrich-in-bigquery).
+simulator for the site) and Stage 3 (multi-touch attribution in PySpark on Dataproc
+Serverless, and the whole pipeline as one Airflow DAG). Stage 2 is
+[below](#stage-2-stitch-and-enrich-in-bigquery), then [Stage 3](#stage-3-attribution-in-spark-orchestrated-by-airflow).
 
 ![Order confirmation page with the Tag Inspector open on the purchase event](docs/images/confirmation-purchase.png)
 
@@ -26,7 +28,7 @@ own fields. More screenshots [below](#screenshots).*
 |---|---|---|---|
 | 1 | Tag the site | React storefront, [tagging plan](docs/tagging-plan.md), [JSON Schema contract](tagging/events.schema.json), runtime validation with a Tag Inspector, unit and end-to-end tests | Done, pending review |
 | 2 | Stitch and enrich in BigQuery | Site events unioned with the GA4 Merchandise Store sample dataset; anonymous sessions stitched to signed-in users on `user_id`; orders deduplicated, enriched with catalog cost; campaign and funnel marts; a seeded traffic simulator | Built and checked on the sample; site data waits on the GA4 link ([below](#stage-2-stitch-and-enrich-in-bigquery)) |
-| 3 | PySpark on Dataproc + Airflow | The Stage 2 transforms as scheduled Spark jobs, orchestrated by Airflow | Not started |
+| 3 | PySpark on Dataproc + Airflow | Multi-touch attribution: every order credited across the buyer's 30-day journey under six models, in PySpark on Dataproc Serverless; the Stage 2 SQL build, its checks, the Spark job and checks on its output as one daily Airflow DAG, run locally in Docker | Built and run end to end on the sample, on the pinned Dataproc runtime 3.0 ([below](#stage-3-attribution-in-spark-orchestrated-by-airflow)) |
 | 4 | Cost and run-time optimization, measured | Before/after numbers for each change, including the ones that don't help | Not started |
 | 5 | Tag QA and KPI alerting | The Playwright funnel grown into full tag QA against the same schema; alerts on funnel and revenue KPIs | Not started |
 | 6 | Roadmap | What would change for a real store | Not started |
@@ -81,9 +83,11 @@ locally only until Stage 5.
 tagline/
   README.md
   Makefile                       make help lists every target
-  .env.example                   copy to .env (gitignored): the Google Cloud project id, the site's GA4 dataset
+  .env.example                   copy to .env (gitignored): the Google Cloud project id, the site's GA4 dataset, the cost guard;
+                                 for Stage 3 the Dataproc region, bucket and service account
   docs/tagging-plan.md           the plan an analyst and a developer sign off: every event, when it fires, when it must not
   docs/data-model.md             Stage 2: lineage, grain and key of every table, identity, attribution and dedupe rules
+  docs/orchestration.md          Stage 3: the DAG, running Airflow locally, cost guards, measured runs, why not Composer
   docs/images/                   the screenshots in this README
   tagging/events.schema.json     the same contract as JSON Schema (draft 2020-12), one $defs entry per event
   site/                          Vite + React + TypeScript storefront
@@ -98,6 +102,10 @@ tagline/
     sql/reports/                 the numbers in the Stage 2 section (make numbers)
     tests/                       pytest, and site_export_fixture.py (make fixture)
   simulator/                     Stage 2: seeded synthetic shoppers in Chrome (Playwright), dry run by default
+  spark/                         Stage 3: the attribution job (pure DataFrame functions, their pytest, the Dataproc entrypoint);
+                                 tagline_spark/: the one batch definition make and the DAG submit; spark/README.md
+  airflow/                       Stage 3: docker-compose for Airflow 3, the tagline_daily DAG, its DagBag test
+    dags/tagline_daily.py        the DAG; helpers in dags/tagline_airflow/, the attribution checks in its sql/
 ```
 
 The store is "Tagline Supply": 20 products in five categories (Apparel,
@@ -507,6 +515,167 @@ ROAS on it demonstrates the join, not anything about Google's campaigns.
 Stage 2 changed no Stage 1 code, tag or contract file. In this README's Stage 1 sections, only
 the unit-test count (66 → 67, what `npm test` runs today) and two forward references to Stage 2
 changed.
+
+---
+
+## Stage 3: attribution in Spark, orchestrated by Airflow
+
+Stage 2 credits each order to one channel: the source of the session it was placed in
+(session-level last click; on the sample, the source collected at landing). GA4's own reports
+differ slightly: their session source skips Direct when an earlier campaign exists (see
+[data-model.md](docs/data-model.md)). Stage 3 asks how that credit moves when the buyer's earlier visits
+count too, under six attribution models, and puts the whole pipeline on a daily schedule. The
+Stage 2 SQL does not change: Airflow runs the same files in the same order with the same cost guard.
+
+**Why Spark here.** Stage 2's attribution is one value per session and one join, which SQL does
+well. Multi-touch attribution is a small program per order: gather the same person's sessions from
+the 30 days before the purchase up to the order's own session, put them in order, and weight each
+touch under each model (last click, last non-direct click, first click, linear, time decay with a
+7-day half-life, and position-based 40/20/40), with the weights summing to 1 per order. In PySpark
+the journey rules and each model's weights are functions over DataFrames, unit tested on hand-built
+journeys (one to five touches, ties, shared touches, the window's edges) with a local SparkSession,
+and Stage 3 is also where the project puts Spark on Dataproc under Airflow. SQL is not clumsier
+here, though: the same rules as one BigQuery query, with one join, a few window functions and an `UNNEST`
+of the six models, are about the same size (`spark/sql/independent_rebuild.sql`, which
+`make spark-report` runs to check the job row by row). At this volume BigQuery could do it all;
+the job is in Spark for those tests and for running Spark on Dataproc, not because the data needs a cluster.
+That choice has a measured price: the Spark task is about 6.5 of a full run's 8 minutes and $0.028 of
+its $0.081. About a quarter of the batch is Serverless starting and stopping, and the job computes for
+under 3 minutes and writes for about 2 (batch by batch in [spark/README.md](spark/README.md#measured)).
+
+**What runs.** One Airflow DAG, `tagline_daily`: wait for the site's GA4 export (when one is
+configured), rebuild the eight Stage 2 models (one task each, wired from the tables each model's
+SQL reads), run the nine Stage 2 checks, run the attribution job as a Dataproc Serverless batch,
+check its output (weights sum to 1 per order and model; each model's attributed orders and revenue
+equal Stage 2's; last click credits every order's own session, so its orders and revenue by channel
+equal Stage 2's), and print what the run cost. The diagram, the guards (a byte cap on every BigQuery job, a TTL on the batch), how to run it
+and why it is not on Cloud Composer: **[docs/orchestration.md](docs/orchestration.md)**.
+
+### Run Stage 3
+
+Requires everything Stage 2 does, plus Docker Desktop, in `tagline/.env` the Dataproc region,
+bucket and service account (`TAGLINE_GCP_REGION`, `TAGLINE_SPARK_BUCKET`,
+`TAGLINE_SPARK_SERVICE_ACCOUNT`; see `.env.example`), and the Cloud Resource Manager API enabled in
+the project (runtime 3.0 batches fail at creation without it; see the limitations below).
+
+```bash
+cd tagline
+make spark-venv          # spark/.venv: pyspark pinned to the runtime's Spark (needs a Java 21 for the tests)
+make spark-test          # the attribution functions, on a local SparkSession (41 tests)
+make spark-submit        # LIVE: upload the job and run it once as a Dataproc Serverless batch; wall time, DCUs, cost
+make spark-report        # channel credit by model, last click against Stage 2, the SQL rebuild (3 small queries)
+make airflow-up          # Airflow 3 in Docker, http://localhost:8080; tagline_daily is created paused
+make airflow-check       # DagBag import test in the Airflow image: no Google Cloud calls
+make airflow-test        # LIVE: the whole DAG once (airflow dags test): BigQuery and Dataproc
+make airflow-down        # stop it; nothing restarts on its own
+```
+
+The DAG runs the job's code version hashed from `spark/`; after changing the job, `make spark-upload`
+(or `make spark-submit`) puts that version in the bucket before a DAG run.
+
+Unpausing `tagline_daily` starts the most recent 10:00 UTC run at once, Spark batch included, and
+then one run a day; to run only the Stage 2 part, leave it paused and use
+`make airflow-test AIRFLOW_CONF='{"attribution": false}'`.
+
+### Results on the sample
+
+From the runtime 3.0 runs of 2026-09-28 (`make spark-report` prints these tables again). The rules, with the
+reasons for each, are in [spark/README.md](spark/README.md#the-rules): an order's touches are the
+buyer's sessions that started at most 30 days (30 × 24 h) before the purchase and no later than the
+order's own session, which is always a touch and always the last; Direct is GA4's `(direct) / (none)`; Stage 2's `(not set) / (not set)`
+(nothing collected) counts as unknown, not Direct.
+
+**The reconciliations** (the DAG's three attribution checks, all passing):
+
+| | |
+|---|---|
+| orders | 4,918 orders and $340,145.00 under every one of the six models: exactly Stage 2's real orders, in `fct_attribution` and in `mart_attribution_daily` |
+| weights | every order's weights sum to 1 under every model (to 1e-9), each between 0 and 1 |
+| last click vs Stage 2 | equal by source / medium / campaign to the cent, orders and revenue, with no adjustment; every order's last-click credit is on the session it was placed in (checked per order against `fct_orders.session_key`) |
+| journeys | 12,315 touches: 2,145 orders have one touch, 977 two, 1,349 three to five, 447 six or more (at most 12); 161 orders have only Direct touches |
+
+Also checked by every `make spark-report`: the journeys and all six models rebuilt independently in
+one BigQuery query from `fct_orders` and `fct_sessions` ([spark/sql/independent_rebuild.sql](spark/sql/independent_rebuild.sql))
+match all 73,890 rows of `fct_attribution` (positions identical, largest weight difference 2.2e-16).
+
+An earlier version of the job ended a journey at the purchase rather than at the order's session.
+On the sample that let last click credit 15 orders ($978) to a session the buyer opened after the
+order's session and before the purchase (9 of those sessions were already over when the purchase
+happened), moving 11 of them to another channel. The spec asks for the order's session, so the
+journey now ends there, and last click is Stage 2's channel for every order.
+
+**How credit moves.** Share of attributed revenue by channel for the 3,208 orders ($215,866.00) whose
+30-day window lies inside the sample (the others are below, under limitations):
+
+| source / medium | last click | last non-direct | first click | linear | time decay | position-based |
+|---|---|---|---|---|---|---|
+| google / organic | 26.3% | 27.1% | **40.0%** | 30.7% | 30.4% | 32.2% |
+| &lt;Other&gt; / referral | 20.3% | 21.0% | 24.1% | 21.5% | 21.9% | 21.9% |
+| (not set) / (not set) | 19.1% | 20.1% | **6.0%** | 13.9% | 15.2% | 13.1% |
+| shop.googlemerchandisestore.com / referral | 17.0% | 18.2% | **4.0%** | 14.0% | 13.7% | 11.9% |
+| (direct) / (none) | 6.7% | **2.5%** | 10.3% | 7.3% | 6.9% | 8.0% |
+| &lt;Other&gt; / &lt;Other&gt; | 2.4% | 2.6% | 6.6% | 3.7% | 3.2% | 4.2% |
+| (data deleted) / (data deleted) | 2.9% | 3.3% | 0.5% | 2.5% | 2.6% | 2.0% |
+| google / cpc | 1.0% | 1.0% | 2.4% | 1.5% | 1.4% | 1.6% |
+
+(`<Other>` and `(data deleted)` are the sample's own obfuscated values.)
+
+- **Organic search opens journeys**: 40.0% of first-click revenue against 26.3% of last click. Every
+  model that looks past the last touch gives it more.
+- **The store's own domain closes them**: `shop.googlemerchandisestore.com / referral` (a
+  self-referral: the store's domain referring to itself) has 17.0% of last click and 4.0% of first
+  click. It is mostly the last step of a journey that started elsewhere, and every multi-touch
+  model moves part of its credit back to where the buyer came from.
+- **Sessions with no source are late touches too**: `(not set) / (not set)` falls from 19.1% to 6.0%
+  under first click. Last non-direct keeps it (unknown is not Direct, a choice explained in
+  `spark/README.md`), so it gains there.
+- **Direct loses under last non-direct, as designed** (6.7% to 2.5%), but it starts more journeys
+  than it ends (10.3% of first click).
+- **Paid search is small and early**: `google / cpc` more than doubles from last click to first
+  click (1.0% to 2.4%).
+- Linear, time decay and position-based land between last and first click; time decay (a 7-day
+  half-life) stays closest to linear here.
+
+Over all 4,918 orders the pattern is the same and a little flatter (organic search 28.3% last click,
+40.7% first click), because orders with a short lookback have fewer touches.
+
+**What it costs to run.** One full DAG run on runtime 3.0, measured: 487 s, 8.70 GiB of BigQuery and
+0.44 DCU-hours of Spark, about $0.081 at list price. The batch is 389 s of that (60 s of it pending),
+and inside it the job computes for 167 s and writes for 117 s. An earlier run with runtime 2.3 as a
+stand-in, same job code, took 361 s and $0.085: its batch was shorter (225 s) but used more
+DCU-hours (0.51).
+Details and the per-task breakdown: [docs/orchestration.md](docs/orchestration.md#measured).
+
+### Stage 3 limitations
+
+- **On the sample, a journey is one device.** The GA4 sample has no `user_id`, so every person is
+  one device, and every journey is one browser's sessions. First click, linear, time decay and
+  position-based can only move credit between channels seen on the device that bought; a campaign
+  clicked on a phone before buying on a laptop is invisible. Cross-device journeys appear only with
+  the site's own export, where signing in stitches devices together (Stage 2's identity rules).
+- **A third of the sample's orders have a short lookback.** The sample starts on 2020-11-01, so an
+  order placed less than 30 days after the sample's first session (2020-11-01 00:00:04 UTC) cannot
+  look back a full 30 days: 1,710 of the 4,918 orders (34.8%, $124,279.00 of the $340,145.00). They have fewer
+  touches (48.4% have more than one, against 60.6% of the others), so for them the multi-touch models
+  sit closer to last click. The tables keep every order, so revenue still reconciles, and flag these
+  (`lookback_complete = FALSE`) so that comparisons between models, like the table above, can leave
+  them out.
+- **The pinned Dataproc runtime needs one project setting** (resolved). The job is pinned to
+  Serverless runtime 3.0 (Spark 4.0.2, Java 21, so the local tests run on the runtime's JVM). When
+  Dataproc creates a 3.0 batch it looks up a tag key through the Cloud Resource Manager API, and
+  while that API was disabled every 3.0 batch after the first failed at creation, in under 10 s and
+  at no cost, so the first full runs used runtime 2.3 as a stand-in. The API was enabled on 2026-09-28
+  (`gcloud services enable cloudresourcemanager.googleapis.com --project <TAGLINE_GCP_PROJECT>`; without
+  `--project` it would go to gcloud's default project), and since then `make spark-submit` and the
+  whole DAG have run on 3.0 ([docs/orchestration.md](docs/orchestration.md#limitations)). The one 3.0
+  batch that ran before that, on older code, hit the 30-minute TTL while writing
+  ([spark/README.md](spark/README.md#measured)).
+- **The two attribution tables are overwritten one after the other**, not together: a batch that
+  stops between the two loads, or a DAG run whose Stage 2 rebuild succeeds and whose Spark task
+  fails, leaves them out of step with each other or with `fct_orders` until the next good run. The
+  run is red when that happens (details in [docs/orchestration.md](docs/orchestration.md#limitations)).
+- **Local Airflow runs only while the machine is on**, and a failed run is red in the Airflow UI
+  and nowhere else until Stage 5 adds alerting.
 
 ---
 

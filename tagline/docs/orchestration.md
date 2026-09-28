@@ -6,6 +6,9 @@
 > After the first, runtime 3.0 batches could not be created in this project until the Cloud Resource
 > Manager API was enabled, at 14:02 UTC that day ([Limitations](#limitations)). The earlier full runs
 > used runtime 2.3 as a stand-in, with the same job code; they are kept below as history.
+> At 15:01 UTC it ran again with the site's own GA4 export configured: the sensor found
+> `events_20260927` on its first poke, the build read both sources, and every check passed, in
+> 480 s and about $0.081 ([measured below](#measured)).
 
 One DAG, `tagline_daily`, runs the whole pipeline once a day: wait for the site's GA4 export (only
 when one is configured), rebuild the Stage 2 BigQuery models in lineage order, run the Stage 2 data
@@ -62,6 +65,12 @@ some hours into the next day, which is what the 8-hour sensor window is for. A r
 hand or through the API may have no logical date at all; Airflow 3 then leaves `logical_date` out
 of the task context, and the sensor falls back to the run's `run_after` (when it was triggered),
 so it waits for the day before that. The DagBag test calls the real sensor on such a context.
+Checked against the live export with one poke each (`airflow tasks test tagline_daily
+wait_for_ga4_export <date>`): logical date 2026-09-27 looked for 2026-09-26 and found no table;
+2026-09-28 found `events_20260927`. So the run that reads the export of 2026-09-27 is
+`make airflow-test AIRFLOW_DATE=2026-09-28`. (In Airflow 3, `airflow tasks test` records the
+task's state in the existing run for that date: the 2026-09-27 poke marked that old run's sensor
+skipped, because the run was more than 8 hours old.)
 
 **Why the last task decides the run's state.** Airflow marks a run successful when its leaf tasks
 succeed. `run_summary` is the only leaf and runs whatever happened, so on its own it would turn
@@ -86,7 +95,7 @@ make airflow-up        # first run: generates the admin login and prints it once
 make airflow-check     # DagBag import test in the Airflow image (no Google Cloud calls)
 make spark-upload      # the job's code for the current sources, if not in the bucket yet (spark-submit does it too)
 make airflow-test      # LIVE: airflow dags test tagline_daily <today, UTC> end to end (BigQuery + Dataproc)
-make airflow-test AIRFLOW_DATE=2026-09-27 AIRFLOW_CONF='{"attribution": false}'   # Stage 2 part only
+make airflow-test AIRFLOW_DATE=2026-09-28 AIRFLOW_CONF='{"attribution": false}'   # Stage 2 part only
 make airflow-down      # stop everything; the metadata database volume is kept
 make airflow-orphans   # after a crash: Dataproc batches the DAG left running (CANCEL=1 cancels them)
 ```
@@ -137,9 +146,11 @@ make airflow-orphans   # after a crash: Dataproc batches the DAG left running (C
   when Docker Desktop starts. The pause state is kept in the metadata database, which
   `make airflow-down` keeps too: if you unpaused the DAG, the next `make airflow-up` starts the most
   recent missed 10:00 UTC run at once. Pause it in the UI before `make airflow-down` if you don't
-  want that. While `TAGLINE_GA4_DATASET` is empty the input is the static public sample, so a
-  scheduled run rebuilds the same tables and reruns the same attribution every day: it costs
-  money and changes nothing, so keep the DAG paused until the site's export exists.
+  want that. The site's export is configured now, but the site gets traffic only when the
+  simulator (or someone browsing with a measurement id set) sends it, so on most days no new
+  daily table arrives: the sensor waits its 8 hours, is skipped, and the run rebuilds the same
+  tables and reruns the same attribution. That costs money and changes nothing, so keep the DAG
+  paused until the site gets traffic every day.
 
 `airflow dags test` runs every task in one process, one at a time, without the scheduler or the
 executor; a scheduled or triggered run goes through the scheduler (LocalExecutor, parallelism 8),
@@ -224,13 +235,41 @@ which runs independent tasks (`stg_items` and `int_identity`, the nine checks) s
 
 ## Measured
 
-All on 2026-09-28, GA4 sample only. Prices are Google's list prices, read that day:
+All on 2026-09-28: the GA4 sample only, then (first below) with the site's own export. Prices are
+Google's list prices, read that day:
 BigQuery on demand $6.25 per TiB billed (US multi-region); Serverless for Apache Spark standard tier in
 `us-central1`, $0.06 per DCU-hour and $0.04 per GB-month of shuffle storage ($0.000054795 per
 GB-hour), billed per second with a 1-minute minimum
 ([pricing](https://cloud.google.com/dataproc-serverless/pricing)).
 
-**Full DAG run on runtime 3.0** (`airflow dags test tagline_daily 2026-09-28`, run
+**Full DAG run with the site's export** (`make airflow-test AIRFLOW_DATE=2026-09-28`, run
+`manual__2026-09-28T15:01:41.185176+00:00`, code version `230e52e7cb36`, `TAGLINE_GA4_DATASET` set):
+the branch took the sensor, which found `events_20260927` on its first poke, and `no_ga4_export` was
+skipped; 26 tasks succeeded, all nine Stage 2 checks and all three attribution checks passed, and
+`run_summary` succeeded. **480 s** from the first task's start to the last task's end, one task at a
+time, and about **$0.081**:
+
+| part | tasks | wall | what it used | list price |
+|---|---|---|---|---|
+| branch, sensor, `prepare_sources` | 4 (1 skipped) | 4.2 s | the sensor's poke: 0.9 s | |
+| Stage 2 models | 8 | 67.1 s | 8 query jobs, 7.12 GiB billed, 50.5 s of job time | $0.043 |
+| Stage 2 checks | 9 | 21.8 s | 9 query jobs, 1.50 GiB billed, 12.4 s | $0.009 |
+| `attribution_enabled`, `spark_attribution` | 2 | 379.5 s | batch `tagline-attr-20260928-e7c2318c-t1-0973b2`: 375 s from creation to end (48 s pending, 328 s running); 0.4364 DCU-hours, 27.27 GB-hours shuffle storage; compute 166.9 s, write 114.7 s | $0.028 |
+| attribution checks | 3 | 7.6 s | 3 query jobs, 80 MiB billed, 4.3 s | $0.0005 |
+| `run_summary` | 1 | 0.1 s | | |
+| **total** | **27** | **480 s** | **20 query jobs, 8.70 GiB billed (9,345,957,888 bytes); 0.436 DCU-hours** | **$0.081** |
+
+Bytes billed are from `region-us.INFORMATION_SCHEMA.JOBS_BY_PROJECT` (the jobs labelled
+`orchestrator=airflow` in the run's window: 7,647,264,768 by the models, 1,614,807,040 by the Stage 2
+checks, 83,886,080 by the attribution checks) and agree with `run_summary`'s table. The site's day
+adds too little to show: the sample-only run below billed 9,338,617,856 bytes. The batch wrote
+73,962 `fct_attribution` rows (the sample's 73,890 and the site's 72) and 5,556 `mart_attribution_daily`
+rows, and `make spark-report` afterwards matched all 73,962 against the independent SQL rebuild. The
+same Spark job run by `make spark-submit` just before the DAG run (batch `…-bef2f7d9-t1-c95cc0`, the site's
+export in Stage 2 as here) took 444 s (56 s pending, 388 s running), 0.5190 DCU-hours, $0.033; compute
+201.5 s, write 135.7 s.
+
+**Full DAG run on runtime 3.0, sample only** (`airflow dags test tagline_daily 2026-09-28`, run
 `manual__2026-09-28T14:17:36.172874+00:00`, with the committed `spark/` mounted as it is, code
 version `230e52e7cb36`): 26 tasks succeeded and 1 was skipped (the GA4 sensor: no export configured),
 all nine Stage 2 checks and all three attribution checks passed, and `run_summary` succeeded.
@@ -320,7 +359,8 @@ parameter, and `run_summary` reported 21 tasks succeeded and 5 skipped.
 
 Also exercised: the sensor against the configured-but-not-yet-created site export
 (`analytics_<property_id>`): it found neither table, logged it, and rescheduled itself; the branch
-picked the sensor when the dataset is set and skipped it when not.
+picked the sensor when the dataset is set and skipped it when not. Once the export existed, the
+sensor found `events_20260927` (the full run above).
 
 ---
 
@@ -396,7 +436,7 @@ account, TTL, labels) and every BigQuery job, which never depended on where Airf
   (PERMISSION_DENIED). Five 3.0 batches failed that way on 2026-09-28, the last at 13:40 UTC, while
   runtime 2.3 batches with the same job and settings were created and ran. The API was enabled at
   14:02 UTC (`gcloud services enable cloudresourcemanager.googleapis.com --project <project>`, no
-  charge); since then `make spark-submit` and the full DAG run above have both succeeded on 3.0. A
+  charge); since then `make spark-submit` and the full DAG run have each succeeded on 3.0 twice. A
   new project needs the same step before its first batch, or `make spark-submit` fails at creation
   and a DAG run fails at `spark_attribution` (both tries) and is marked failed by `run_summary`.
 - **The two attribution tables are not replaced together.** The job overwrites `fct_attribution` and
@@ -411,8 +451,8 @@ account, TTL, labels) and every BigQuery job, which never depended on where Airf
 - **Leftovers in Cloud Storage** (fractions of a cent, not managed by the pipeline): the TTL-stopped
   3.0 batch left its staged Parquet files under `.spark-bigquery-local-.../` in the Spark bucket
   (1,577 objects, 2.8 MiB; the connector deletes them only after a completed load, and the bucket has
-  no lifecycle rule). The two 3.0 batches that completed deleted their staged files after their
-  loads: after the DAG run the bucket held only `code/` and that one old prefix. The first runtime
+  no lifecycle rule). The four 3.0 batches that completed deleted their staged files after their
+  loads: after the last DAG run the bucket held only `code/` and that one old prefix. The first runtime
   2.3 batch (a diagnostic one at 05:03 UTC, before the stand-in runs; `spark/README.md`) made
   Dataproc create two buckets of its own in the project,
   `dataproc-staging-us-central1-<project number>-...` (driver output; no lifecycle rule) and
@@ -425,4 +465,6 @@ account, TTL, labels) and every BigQuery job, which never depended on where Airf
   a scheduled run adds (LocalExecutor, the execution API behind the JWT secret) came up healthy but
   were not exercised by a task.
 - **No alerting.** A failed run is red in the UI and nowhere else; alerting is Stage 5.
-- **The export day is a UTC date**, not the property's time zone.
+- **The export day is a UTC date**, not the property's time zone. This property's day runs behind
+  UTC: the simulator's hits, sent between 01:54 and 01:57 UTC on 2026-09-28, are in its table for
+  2026-09-27, which the run for logical date 2026-09-28 reads.

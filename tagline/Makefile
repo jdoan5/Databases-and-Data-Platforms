@@ -101,7 +101,7 @@ test: test-pipeline test-simulator ## every unit test that needs no browser and 
 AIRFLOW_COMPOSE := docker compose -f airflow/docker-compose.yaml --env-file .env --env-file airflow/.env
 AIRFLOW_INIT    := airflow/scripts/init-secrets.sh
 
-# make airflow-test AIRFLOW_DATE=2026-09-27 AIRFLOW_CONF='{"attribution": false}'
+# make airflow-test AIRFLOW_DATE=2026-09-28 AIRFLOW_CONF='{"attribution": false}'
 AIRFLOW_DATE ?= $(shell date -u +%F)
 AIRFLOW_CONF ?=
 

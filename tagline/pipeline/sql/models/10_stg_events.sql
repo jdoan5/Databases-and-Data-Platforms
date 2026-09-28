@@ -16,9 +16,9 @@
 -- @column event_date: event_date from the export: the day in the GA4 property's time zone.
 -- @column event_timestamp: When GA4 received the event (event_timestamp, microseconds UTC).
 -- @column event_name: GA4 event name (page_view, view_item, purchase, ...).
--- @column user_pseudo_id: GA4's pseudonymous device/browser id (the client id): one per browser. Reported to be
---     NULL on consent-denied cookieless pings (not yet observed in the site's export); such events have no
---     session_key.
+-- @column user_pseudo_id: GA4's pseudonymous device/browser id (the client id): one per browser. NULL on
+--     consent-denied cookieless pings (in the site's export of 2026-09-27, all 415 analytics_storage = No rows have
+--     neither user_pseudo_id nor ga_session_id); such events have no session_key.
 -- @column user_id: The signed-in account id sent by the site (opaque 32-hex id), NULL when anonymous.
 --     Always NULL in ga4_sample.
 -- @column ga_session_id: GA4 session id (event param ga_session_id). Unique only together with

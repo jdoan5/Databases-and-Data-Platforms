@@ -27,8 +27,8 @@ own fields. More screenshots [below](#screenshots).*
 | # | Stage | What it produces | Status |
 |---|---|---|---|
 | 1 | Tag the site | React storefront, [tagging plan](docs/tagging-plan.md), [JSON Schema contract](tagging/events.schema.json), runtime validation with a Tag Inspector, unit and end-to-end tests | Done, pending review |
-| 2 | Stitch and enrich in BigQuery | Site events unioned with the GA4 Merchandise Store sample dataset; anonymous sessions stitched to signed-in users on `user_id`; orders deduplicated, enriched with catalog cost; campaign and funnel marts; a seeded traffic simulator | Built and checked on the sample; site data waits on the GA4 link ([below](#stage-2-stitch-and-enrich-in-bigquery)) |
-| 3 | PySpark on Dataproc + Airflow | Multi-touch attribution: every order credited across the buyer's 30-day journey under six models, in PySpark on Dataproc Serverless; the Stage 2 SQL build, its checks, the Spark job and checks on its output as one daily Airflow DAG, run locally in Docker | Built and run end to end on the sample, on the pinned Dataproc runtime 3.0 ([below](#stage-3-attribution-in-spark-orchestrated-by-airflow)) |
+| 2 | Stitch and enrich in BigQuery | Site events unioned with the GA4 Merchandise Store sample dataset; anonymous sessions stitched to signed-in users on `user_id`; orders deduplicated, enriched with catalog cost; campaign and funnel marts; a seeded traffic simulator | Built and checked on the sample and on the site's own GA4 export (one day of simulated traffic, 1,433 events; [below](#the-sites-own-export)) |
+| 3 | PySpark on Dataproc + Airflow | Multi-touch attribution: every order credited across the buyer's 30-day journey under six models, in PySpark on Dataproc Serverless; the Stage 2 SQL build, its checks, the Spark job and checks on its output as one daily Airflow DAG, run locally in Docker | Built and run end to end on the sample and the site's export, on the pinned Dataproc runtime 3.0, with cross-device journeys from the site ([below](#stage-3-attribution-in-spark-orchestrated-by-airflow)) |
 | 4 | Cost and run-time optimization, measured | Before/after numbers for each change, including the ones that don't help | Not started |
 | 5 | Tag QA and KPI alerting | The Playwright funnel grown into full tag QA against the same schema; alerts on funnel and revenue KPIs | Not started |
 | 6 | Roadmap | What would change for a real store | Not started |
@@ -220,7 +220,7 @@ gtag.js's own hits don't read an email out of the address bar. In the property's
 web stream, turn off Enhanced measurement's "page changes based on browser
 history events", or every route change is counted twice, and turn on data
 redaction for email as a second line of defence. Site data reaches BigQuery
-through GA4's own BigQuery export ([Stage 2](#the-sites-own-export-waiting-on-the-ga4-link)).
+through GA4's own BigQuery export ([Stage 2](#the-sites-own-export)).
 
 ---
 
@@ -254,7 +254,7 @@ through GA4's own BigQuery export ([Stage 2](#the-sites-own-export-waiting-on-th
 
 Raw GA4 export rows from two sources become stitched, enriched, checked tables in
 BigQuery: Google's public GA4 sample (the Google Merchandise Store, obfuscated, no
-`user_id`) now, and the site's own GA4 export once GA4 is linked to BigQuery. Python
+`user_id`) and the site's own GA4 export (one day so far, the simulator's traffic). Python
 loads reference data, builds the SQL models in order and runs the checks; the modelling
 is plain SQL, one file per table. The rules (grain and key of every table, identity,
 attribution, dedupe, what is synthetic) are in **[docs/data-model.md](docs/data-model.md)**.
@@ -276,7 +276,7 @@ Node 24 or 22.22+ and Google Chrome for the simulator.
 
 ```bash
 cd tagline
-cp .env.example .env         # set TAGLINE_GCP_PROJECT; leave TAGLINE_GA4_DATASET empty for now
+cp .env.example .env         # set TAGLINE_GCP_PROJECT; TAGLINE_GA4_DATASET once the site's export exists
 make setup                   # pipeline/.venv, npm ci in site/ and simulator/
 make test                    # pytest (54) + simulator unit tests (26): no BigQuery, no browser
 make reference               # tagline_raw.products and tagline_raw.campaign_costs
@@ -323,7 +323,7 @@ do not. The sample has no `user_id`, so every person is one device.
 
 ### What a build costs
 
-The last `make build` (all eight models, then the nine checks), on-demand pricing:
+The last `make build` on the sample alone (all eight models, then the nine checks), on-demand pricing:
 
 ```
 step                               kind      processed      billed    slot-ms  seconds       rows
@@ -350,42 +350,134 @@ total                              17 jobs    8.57 GiB    8.62 GiB  1,713,884   
 ```
 
 8.62 GiB billed is about $0.05. Reading the sample into `stg_events` is 39% of it. This
-table is Stage 4's baseline. Each table is partitioned by its date and some are clustered,
+table is Stage 4's baseline. With the site's export in (the build of 2026-09-28), the same 17 jobs
+processed 8.57 GiB and billed 8.62 GiB, and all nine checks passed: the site's one day (1,433
+rows; 10 MiB billed, BigQuery's minimum per table, when queried on its own) does not move the
+rounded totals. Each table is partitioned by its date and some are clustered,
 but at this volume none of that prunes anything (measured; see
 [data-model.md](docs/data-model.md#tables-grain-key-layout)): the layout is a placeholder
 for Stage 4 to decide.
 
-### The site's own export: waiting on the GA4 link
+### The site's own export
 
-Nothing about the site's data exists in BigQuery yet. GA4 creates the export dataset,
-`analytics_<property_id>`, when the property is linked to BigQuery, and data starts flowing
-only after the link exists, so the order matters:
+**Done.** The site has a GA4 property of its own, linked to BigQuery with the daily export in the
+US. `make simulate-live` sent the simulator's 50 people to it on 2026-09-28 between 01:54 and
+01:57 UTC, and GA4 wrote them to `analytics_<property_id>.events_20260927` (1,433 rows; the
+property's time zone puts them on 2026-09-27) and `pseudonymous_users_20260927` (48 rows, not
+read). With `TAGLINE_GA4_DATASET=analytics_<property_id>` in `tagline/.env`, `make build` unions
+the site's rows with the sample as `source = 'tagline_site'`, and all nine checks pass.
 
-1. **Property.** Create a GA4 property and web stream for this project. In the stream's
-   Enhanced measurement, turn off "page changes based on browser history events" (the site
-   sends its own `page_view`s) and turn on data redaction for email.
-2. **Link.** In GA4 Admin → BigQuery links, link your project (`TAGLINE_GCP_PROJECT` in `tagline/.env`), choose the **US**
-   data location (it is chosen here, when the link is made; moving it later means deleting
-   the link, copying the data to a new dataset in the other region and relinking), and the
-   **daily** export. Streaming is optional and costs extra.
-3. **Traffic.** Only after the link exists:
-   `VITE_GA4_MEASUREMENT_ID=G-XXXXXXXXXX make simulate-live` (or browse the site with
-   `.env.local` set).
-4. **Wait** for `events_YYYYMMDD`. Google says data starts flowing within 24 hours of the
-   link, and the daily table typically lands mid-afternoon in the property's time zone,
-   sometimes later or the next day.
+Each number below comes from a query on the export or on the built tables, set against the
+simulator's own record of that run (`simulator/out/live/`: `plan.json`, `hits.ndjson`, `summary.json`):
+
+| | Site export, 2026-09-27 | The simulator's plan and hits |
+|---|---|---|
+| export rows → staged events | 1,433 → 1,433 (0 exact duplicates) | 1,159 hits recorded (below) |
+| consent | 1,018 rows `analytics_storage = Yes`, all with a `user_pseudo_id`; 415 rows `No`, **none** with a `user_pseudo_id` or `ga_session_id` | 48 devices accepted the banner, 8 rejected it, 12 ignored it |
+| devices, sessions | 48 devices, 48 sessions, 45 engaged | the 48 accepting devices, one visit each; the 3 not engaged are the 3 that bounced right after accepting |
+| people | 39 with a session: 20 signed-in people on 29 devices, 19 anonymous devices; 5 more known only from an order placed in no session | 50 people, 23 of them signed in |
+| stitched across devices | 8 people on two or more devices (17 devices; one person on 3) | 11 people signed in on two or more devices |
+| orders | 13 orders, 13 `transaction_id`s, 0 duplicates dropped; revenue $840.93, tax $67.28, shipping $93.00 | 13 purchases: value $840.93, tax $67.28, shipping $93.00 |
+| consented orders | 8, each in a session: $461.95 (tax $36.96, shipping $54.00) | |
+| consent-denied orders | 5, in no session: $378.98 (tax $30.32, shipping $39.00); 3 `cookieless` (a per-order anonymous person), 2 `signed_in_purchase` (the account's person) | 5 purchases sent with consent denied |
+| sessions by channel | direct 13, `newsletter_oct` 13, organic 10, `fall_launch` 7, `retarget_q4` 5; every session's source / medium / campaign is its device's planned landing | planned devices 19, 16, 16, 11, 6; of them accepting 13, 13, 10, 7, 5 |
+| funnel (closed, per session) | 48 → 37 view_item → 21 add_to_cart → 13 begin_checkout → 8 purchase | |
+| order lines | 22 lines, 33 units, $840.93, every line matched to the catalog (synthetic margin 56%) | |
+
+**Consent-denied rows have no device and no session.** The data model was written for either
+answer (NULL ids, or a new `user_pseudo_id` per session); the export settles it: every one of the
+415 `analytics_storage = No` rows has a NULL `user_pseudo_id` and a NULL `ga_session_id`. Those
+rows are in `stg_events` but in no session and not in `int_identity`, and none of the 20 devices
+that rejected or ignored the banner is a device in the tables. Every device that accepted is one,
+with `analytics_storage = Yes`, even the 3 that bounced right after accepting, whose every
+recorded hit was sent denied (they have 7, 7 and 6 rows). Sessions are attributed from
+`session_traffic_source_last_click`'s `cross_channel_campaign`, which has a value on all 1,018
+consented rows; it equals
+`manual_campaign` everywhere except the 13 direct sessions (259 rows), where `manual_campaign` is
+`(not set)` and `cross_channel_campaign` is `(direct) / (none) / (direct)`.
+
+**Every planned cross-device person is one person; 8 of the 11 count two devices.** Each of the 29
+consented devices that signed in has its person's account id as `person_id` (the `uid` in the
+hits), and no account is split between two people. p002, p003, p031, p032, p033, p037 and p046
+have 2 devices each, p048 has 3. The other three signed in on a second device that rejected or
+ignored the banner: p006 (reject), p023 (reject) and p029 (ignore). That device's rows carry the
+account's `user_id` (4, 6 and 11 rows) but no device id, so they belong to no device and no
+session, and `person_device_count` is 1. p002 and p033 also each had such a device besides their
+two counted ones. Three more people signed in only on devices that denied consent (p022, p024,
+p045: 13, 7 and 24 rows with their `user_id`); the two of them who bought have orders under their
+own account (`signed_in_purchase`). p016 used two devices and signed in on one; the other stays a
+separate anonymous person, because nothing links them.
+
+**Consent-denied orders.** The 5 purchases sent with consent denied are the 5 orders with no
+session, $378.98 in all: p021 $27.98, p035 $101.00 and p036 $171.00 as `cookieless`, each with its
+own anonymous `person_id`; p022 $9.00 and p045 $70.00 as `signed_in_purchase`. Checks 02 and 03
+count them as their own bucket. They are in no session, so they are in neither
+`mart_campaign_daily` nor `mart_funnel_daily`; that is why the mart shows `fall_launch` with no
+orders, although the simulator's two `fall_launch` shoppers who bought (p035, p045) did so with
+consent denied.
+
+`mart_campaign_daily`, the site's rows for 2026-09-27 (cost is the synthetic `campaign_costs`):
+
+| session source / medium / campaign | sessions | engaged | orders | revenue | cost | ROAS | cost per order |
+|---|---|---|---|---|---|---|---|
+| (direct) / (none) / (direct) | 13 | 12 | 2 | $81.00 | | | |
+| newsletter / email / newsletter_oct | 13 | 13 | 1 | $24.00 | $8.40 | 2.86 | $8.40 |
+| google / organic / (organic) | 10 | 10 | 2 | $77.99 | | | |
+| google / cpc / fall_launch | 7 | 5 | 0 | $0.00 | $35.41 | 0.00 | |
+| facebook / paid_social / retarget_q4 | 5 | 5 | 3 | $278.96 | $39.43 | 7.07 | $13.14 |
+
+**GA4's own report against the export.** GA4's Events report for 2026-09-27, as the owner read
+it, showed 662 events, 41 users and $461.95 of revenue. The revenue matches the export to the cent,
+and only the consented part of it: the 8 purchases with `analytics_storage = Yes` sum to $461.95
+(checked on the export). The export also holds the 5 purchases sent with consent denied ($378.98,
+no device id), and the report's revenue does not include them. The events do not match: the
+export has 1,018 consented rows and 415 denied ones. GA4's reports can take 24 to 48 hours to
+finalise, so a report read soon after the day can still change; the export is the complete
+record, and every site number in this section, apart from the report's own, comes from it. The report's 41 users are not worked out from the
+export here either (its consented rows carry 48 device ids and 20 account ids).
+
+**The export against the simulator's hits.** Purchases, `begin_checkout`, `add_shipping_info` and
+`add_payment_info` match one for one (13, 19, 16, 13). The export has 136 `session_start` and
+`first_visit` rows (68 each, one per device) that gtag.js sends as flags on other hits, not as hits
+of their own. It also has 138 rows more than the recorded hits among the other events (68 of them
+`user_engagement`, 24 `page_view`); why is not investigated here.
+
+**What the simulator does not produce**, so the live export does not exercise it (the fixture,
+below, still covers the model's rules for it):
+
+- **A second visit.** Every device is a fresh browser with exactly one session
+  (`ga_session_number` is 1 everywhere): no returning device, and no campaign carried into a later
+  visit, so whether the export's session record credits a direct return to an earlier campaign is
+  still not observed.
+- **An anonymous session before sign-in.** Sign-in happens in the visit's own session, so all 29
+  sessions on signed-in devices are `signed_in_session`, and none is `device_user_id`.
+- **A shared device, an account switch, a repeated or reused `transaction_id`, a purchase without
+  one, an exact duplicate row**: 0 of each in the export.
+- **A streaming table.** The export is daily only, and the day has its daily table.
+- **A Google Ads click.** `fall_launch` is `google / cpc` from its utm_* only: no gclid and no
+  `google_ads_campaign` on any row.
+- **Real devices.** One machine, desktop Chrome on macOS: every row of the export says `desktop`
+  and `Chrome`, whatever the window size; all 68 visits fall within 4 minutes of one date.
+
+**How it was set up**, for another property:
+
+1. **Property.** A GA4 property and web stream for the site. In the stream's Enhanced measurement,
+   turn off "page changes based on browser history events" (the site sends its own `page_view`s)
+   and turn on data redaction for email.
+2. **Link.** In GA4 Admin → BigQuery links, link your project (`TAGLINE_GCP_PROJECT` in
+   `tagline/.env`), choose the **US** data location (it is chosen when the link is made; moving it
+   later means deleting the link, copying the data to a new dataset in the other region and
+   relinking), and the **daily** export. Streaming is optional and costs extra.
+3. **Traffic.** Only after the link exists: `VITE_GA4_MEASUREMENT_ID=G-XXXXXXXXXX make simulate-live`
+   (or browse the site with `.env.local` set).
+4. **Wait** for `events_YYYYMMDD`. Google says data starts flowing within 24 hours of the link,
+   and the daily table typically lands mid-afternoon in the property's time zone, sometimes later
+   or the next day.
 5. **Build.** Set `TAGLINE_GA4_DATASET=analytics_<property_id>` in `tagline/.env` and run
-   `make build`. The site's rows are unioned with the sample as `source = 'tagline_site'`.
-   Daily tables are read; a streaming table only for a day with no daily table yet, so a day
-   is never counted twice. With the variable unset, the build uses the sample alone.
-6. **What to expect.** Consent-denied visitors send cookieless pings; if they arrive with no
-   `user_pseudo_id` or `ga_session_id` they are in no session, and their purchases are orders
-   with no session (`identity_rule` `cookieless` or `signed_in_purchase`). A day read from a
-   streaming table may lack pre-consent hits' device ids until the daily table replaces it.
-   The session source comes from `session_traffic_source_last_click`
-   (`cross_channel_campaign` first). See [data-model.md](docs/data-model.md#identity).
+   `make build`. Daily tables are read; a streaming table only for a day with no daily table yet,
+   so a day is never counted twice. With the variable unset, the build uses the sample alone.
 
-**Proven before it exists.** `make fixture` (`pipeline/tests/site_export_fixture.py`) loads
+**Proven before it existed.** `make fixture` (`pipeline/tests/site_export_fixture.py`) loads
 hand-built rows shaped like the site's export into temporary tables in `tagline_raw`, named as
 GA4 names them behind a `fake_ga4_` prefix (`fake_ga4_events_20260924`, …; no extra dataset,
 each table labelled `purpose:fixture` and expiring after 24 hours), builds everything with the
@@ -470,8 +562,9 @@ the exclusion cannot be turned off or measured
 itself: its user agent says `HeadlessChrome/154.0.0.0` (checked on this machine). So live
 mode runs **headed** Chrome by default. The simulator does not change the user agent or
 hide automation (`navigator.webdriver` is still true), and if GA4 filters the headed traffic
-too, the answer is to accept that, not to disguise it. Whether GA4 counts it is unknown until
-the property exists.
+too, the answer is to accept that, not to disguise it. The export shows no sign of filtering: for
+every event name it has at least as many rows as the simulator recorded hits, with all 13
+purchases and all 48 devices that accepted consent ([above](#the-sites-own-export)).
 
 ### What is synthetic
 
@@ -479,7 +572,7 @@ Product unit costs (a documented margin per category plus seeded jitter) and all
 spend (`campaign_costs`, seeded; sample budgets sized from the sample's own traffic at an
 invented price per session) are flagged in their tables (`cost_is_synthetic`,
 `is_synthetic`) and descriptions, and check 09 fails if not. Every simulated visit, order and
-account, and so every `source = 'tagline_site'` row once the export exists, is synthetic too,
+account, and so every `source = 'tagline_site'` row (all of the export of 2026-09-27), is synthetic too,
 but that is labelled only here, in [data-model.md](docs/data-model.md#what-is-synthetic) and
 in the simulator's live-mode banner: no column flags it. The fixture's rows live only in
 temporary tables whose descriptions say so. The sample's revenue is itself obfuscated, so
@@ -487,14 +580,15 @@ ROAS on it demonstrates the join, not anything about Google's campaigns.
 
 ### Stage 2 limitations
 
-- **Stitching is only shown on fixture data.** The sample has no `user_id`, and the site's
-  export does not exist yet. The fixture proves the rules on rows shaped like the export; real
-  GA4 processing (sessionization, consent-denied pings, attribution carried across visits)
-  will only be seen once the property is live.
+- **Stitching is shown on one day of simulated traffic.** The sample has no `user_id`. On the
+  site's export, 8 people are stitched across 17 devices and no account is split, but that is one
+  day of 68 synthetic visits; the paths the simulator does not produce ([listed above](#the-sites-own-export))
+  are shown only on the fixture's rows.
 - **Consent-denied activity joins a person when it carries a `user_id`.** That follows the
   tagging plan's §8 choice to send `user_id` whatever the consent state, which is accepted for
   this demo and still marked *Needs sign-off*; if the sign-off goes the other way, denied
-  sessions need their own identity rule.
+  sessions need their own identity rule. On the site's export that is 75 denied rows from 8
+  accounts, and 2 of the 5 denied orders ($79.00).
 - **Session attribution differs by source.** Site sessions use GA4's own
   `session_traffic_source_last_click`; sample sessions use the source collected at landing,
   then `traffic_source` for a device's first session, else `(not set)`, because the sample
@@ -505,12 +599,12 @@ ROAS on it demonstrates the join, not anything about Google's campaigns.
 - **Orders without a `transaction_id` cannot be deduplicated** (450 in the sample, all with no
   revenue); each is kept once per event, flagged, and not counted as a conversion.
 - **The simulator's traffic is small and uniform**: one machine, one user agent, `localhost`,
-  window sizes standing in for devices. It exercises the tags, the campaign join, sign-in
-  across devices and consent, but not every path the model handles: every device is a fresh
-  browser with exactly one session (so no `ga_session_number` above 1, no returning device,
-  no earlier anonymous session on the same browser before a sign-in, and no campaign carried
-  across visits), and a whole run takes a few minutes on one date. Those paths are covered
-  only by the fixture.
+  window sizes standing in for devices (every one of the export's 1,433 rows says `desktop`,
+  `Chrome`). It exercises the tags, the campaign join, sign-in across devices and consent, but
+  not every path the model handles: every device is a fresh browser with exactly one session (so
+  no `ga_session_number` above 1, no returning device, no earlier anonymous session on the same
+  browser before a sign-in, and no campaign carried across visits), and a whole run takes a few
+  minutes on one date. Those paths are covered only by the fixture.
 
 Stage 2 changed no Stage 1 code, tag or contract file. In this README's Stage 1 sections, only
 the unit-test count (66 → 67, what `npm test` runs today) and two forward references to Stage 2
@@ -541,7 +635,7 @@ of the six models, are about the same size (`spark/sql/independent_rebuild.sql`,
 the job is in Spark for those tests and for running Spark on Dataproc, not because the data needs a cluster.
 That choice has a measured price: the Spark task is about 6.5 of a full run's 8 minutes and $0.028 of
 its $0.081. About a quarter of the batch is Serverless starting and stopping, and the job computes for
-under 3 minutes and writes for about 2 (batch by batch in [spark/README.md](spark/README.md#measured)).
+about 3 minutes and writes for about 2 (batch by batch in [spark/README.md](spark/README.md#measured)).
 
 **What runs.** One Airflow DAG, `tagline_daily`: wait for the site's GA4 export (when one is
 configured), rebuild the eight Stage 2 models (one task each, wired from the tables each model's
@@ -579,7 +673,9 @@ then one run a day; to run only the Stage 2 part, leave it paused and use
 
 ### Results on the sample
 
-From the runtime 3.0 runs of 2026-09-28 (`make spark-report` prints these tables again). The rules, with the
+From the runtime 3.0 runs of 2026-09-28 (`make spark-report` prints these tables again). These are the
+sample's rows; since the site's export was added, the same tables also hold the site's 8 orders
+([below](#results-on-the-sites-export)), and the sample's rows are unchanged. The rules, with the
 reasons for each, are in [spark/README.md](spark/README.md#the-rules): an order's touches are the
 buyer's sessions that started at most 30 days (30 × 24 h) before the purchase and no later than the
 order's own session, which is always a touch and always the last; Direct is GA4's `(direct) / (none)`; Stage 2's `(not set) / (not set)`
@@ -639,11 +735,65 @@ journey now ends there, and last click is Stage 2's channel for every order.
 Over all 4,918 orders the pattern is the same and a little flatter (organic search 28.3% last click,
 40.7% first click), because orders with a short lookback have fewer touches.
 
+### Results on the site's export
+
+From `make spark-submit` after the build with the site's export (batch
+`tagline-attr-20260928-bef2f7d9-t1-c95cc0`, runtime 3.0, 2026-09-28 14:53 UTC) and `make spark-report`
+after it; the DAG run afterwards wrote the same rows and passed the same checks
+([docs/orchestration.md](docs/orchestration.md#measured)).
+The tables now hold 4,926 orders ($340,606.95), 12,327 touches and 73,962 `fct_attribution` rows: the
+sample's 4,918 orders plus the site's 8. `make spark-report`'s independent SQL rebuild matched all
+73,962 rows (largest weight difference 2.2e-16), and no order's last-click credit left its own session.
+
+| | Site export, 2026-09-27 |
+|---|---|
+| orders attributed | 8 orders, $461.95 under each of the six models: the 8 orders placed in a session |
+| not attributed | the 5 consent-denied orders ($378.98): they are in no session, so they have no journey, as they are in none of Stage 2's channel marts |
+| journeys | 12 touches: 4 orders have one touch, 4 have two; one order's only touch is Direct |
+| cross-device | all 4 two-touch journeys cross devices: the buyer signed in on one device, then bought on another |
+| lookback | all 8 `lookback_complete = FALSE`: the site's data starts with its first session, 2026-09-28 01:54 UTC, so no order can look back 30 days |
+
+Two of those journeys, as `fct_attribution` has them (the weight each touch gets under each model):
+
+| order | touch | device | session source / medium / campaign | started before the purchase | last click | last non-direct | first click | linear | time decay | position-based |
+|---|---|---|---|---|---|---|---|---|---|---|
+| p003's, $37.97 | 1 | p003-d1 | newsletter / email / newsletter_oct | 26.5 s | 0 | 0 | 1 | 0.5 | 0.499997 | 0.5 |
+| | 2, order session | p003-d2 | facebook / paid_social / retarget_q4 | 15.7 s | 1 | 1 | 0 | 0.5 | 0.500003 | 0.5 |
+| p031's, $78.00 | 1 | p031-d1 | google / organic / (organic) | 19.4 s | 0 | 1 | 1 | 0.5 | 0.499997 | 0.5 |
+| | 2, order session | p031-d2 | (direct) / (none) / (direct) | 9.6 s | 1 | 0 | 0 | 0.5 | 0.500003 | 0.5 |
+
+p003 opened the newsletter on one device and bought from the retargeting ad on another: last click
+gives the order to `retarget_q4`, first click to `newsletter_oct`. p031 found the store through
+organic search on one device and came back direct on another to buy: last click credits Direct,
+and last non-direct moves the whole order to organic search on the other device. The other two are
+p032 (`newsletter_oct`, then `retarget_q4`, $21.99) and p037 (organic search on both devices, $12.00).
+
+Revenue by channel over the site's 8 orders:
+
+| session source / medium / campaign | last click | last non-direct | first click | linear, time decay, position-based |
+|---|---|---|---|---|
+| facebook / paid_social / retarget_q4 | $278.96 | $278.96 | $219.00 | $248.98 |
+| google / organic / (organic) | $77.99 | $155.99 | $155.99 | $116.99 |
+| newsletter / email / newsletter_oct | $24.00 | $24.00 | $83.96 | $53.98 |
+| (direct) / (none) / (direct) | $81.00 | $3.00 | $3.00 | $42.00 |
+| google / cpc / fall_launch | $0.00 | $0.00 | $0.00 | $0.00 |
+
+In both two-touch journeys with `newsletter_oct` (p003's and p032's) it is the first touch, and
+`retarget_q4` the last.
+The touches are seconds apart, so time decay (a 7-day half-life) cannot tell them apart from
+linear, and position-based with two touches is 50/50 by definition: the three give the same
+dollars to the cent. `fall_launch` gets
+nothing under any model: none of its 7 consented sessions bought, and the two `fall_launch`
+shoppers who did buy had consent denied. Last click equals Stage 2's `mart_campaign_daily`, as the
+DAG's check 03 requires.
+
 **What it costs to run.** One full DAG run on runtime 3.0, measured: 487 s, 8.70 GiB of BigQuery and
 0.44 DCU-hours of Spark, about $0.081 at list price. The batch is 389 s of that (60 s of it pending),
 and inside it the job computes for 167 s and writes for 117 s. An earlier run with runtime 2.3 as a
 stand-in, same job code, took 361 s and $0.085: its batch was shorter (225 s) but used more
-DCU-hours (0.51).
+DCU-hours (0.51). With the site's export configured, a full run (the sensor finding
+`events_20260927`, both sources built and checked, the batch attributing 4,926 orders) took 480 s and
+about $0.081: 8.70 GiB of BigQuery and 0.44 DCU-hours, all checks passing.
 Details and the per-task breakdown: [docs/orchestration.md](docs/orchestration.md#measured).
 
 ### Stage 3 limitations
@@ -652,7 +802,14 @@ Details and the per-task breakdown: [docs/orchestration.md](docs/orchestration.m
   one device, and every journey is one browser's sessions. First click, linear, time decay and
   position-based can only move credit between channels seen on the device that bought; a campaign
   clicked on a phone before buying on a laptop is invisible. Cross-device journeys appear only with
-  the site's own export, where signing in stitches devices together (Stage 2's identity rules).
+  the site's own export, where signing in stitches devices together (Stage 2's identity rules): 4 of
+  its 8 attributed orders. Those journeys are one day of simulated visits seconds apart, so they show
+  credit moving between devices and channels, not how the time-based models behave over 30 days.
+- **Consent-denied orders are not attributed.** A purchase sent with consent denied has no session,
+  so it has no journey: 5 of the site's 13 orders ($378.98), left out as Stage 2's channel marts
+  leave them out. Two of them carry an account id (`signed_in_purchase`), which could reach the
+  person's consented sessions on other devices; here neither person has any (both signed in only
+  on devices that denied consent), so the rule would change nothing today.
 - **A third of the sample's orders have a short lookback.** The sample starts on 2020-11-01, so an
   order placed less than 30 days after the sample's first session (2020-11-01 00:00:04 UTC) cannot
   look back a full 30 days: 1,710 of the 4,918 orders (34.8%, $124,279.00 of the $340,145.00). They have fewer

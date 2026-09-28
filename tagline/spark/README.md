@@ -37,8 +37,9 @@ spark/
 Settled in `attribution/journeys.py` and `models.py`, and pinned by the tests.
 
 - **Orders**: Stage 2's real orders placed in a session: not `is_zero_value_without_id`, `session_key` not
-  NULL. On the GA4 sample: 4,918 orders, $340,145.00 (all real orders have a session). An order in no
-  session is in no Stage 2 channel mart either.
+  NULL. On the GA4 sample: 4,918 orders, $340,145.00 (all real orders have a session). On the site's
+  export: 8 of its 13 orders, $461.95; the other 5 ($378.98) were sent with consent denied and have no
+  session. An order in no session is in no Stage 2 channel mart either.
 - **Touches**: the order person's sessions (same data source) with
   `ordered_at - 30 days <= session_start_at <= the order session's session_start_at`, both ends
   inclusive, 30 days = 30 x 24 h. The window reaches back from the purchase and ends at the **order
@@ -156,6 +157,31 @@ Organic search starts journeys (40% of first-click revenue) that end on the stor
 and on sessions with no collected source; the checkout-host referral (`shop.googlemerchandisestore.com`)
 is mostly a last step. On the sample a person is one device, so all of this is within one browser.
 
+## Verified on the site's export
+
+From `make spark-submit`'s batch (`tagline-attr-20260928-bef2f7d9-t1-c95cc0`, 14:53 UTC) after the Stage 2
+build with the site's export, and `make spark-report` after it; the DAG run that followed wrote the same
+rows. The job wrote 73,962 `fct_attribution` rows and 5,556 `mart_attribution_daily` rows (the sample's
+73,890 and 5,532 plus the site's 72 and 24), with 0 problems in its own checks, and the independent
+rebuild matched all 73,962 rows (max weight difference 2.2e-16).
+
+| | site (`source = 'tagline_site'`) |
+|---|---|
+| orders, touches | 8 orders, $461.95, 12 touches: 4 one-touch, 4 two-touch; one order's only touch is Direct |
+| conservation | every model: 8.0 orders, $461.95 |
+| cross-device | all 4 two-touch journeys cross devices (the buyer signed in on both) |
+| lookback | all 8 incomplete: the site's data starts at its first session, 2026-09-28 01:54 UTC |
+| not attributed | the 5 consent-denied orders, in no session ($378.98) |
+
+The clearest journey: p031 arrived from organic search on one device and came back direct on another
+about 10 s later to buy ($78.00). `last_click` gives the order to Direct (the order session), `last_non_direct`
+and `first_click` to organic search on the first device; `linear`, `time_decay` (0.499997 / 0.500003:
+the touches are seconds apart) and `position_based` split it in half. p003 opened `newsletter_oct` on one
+device and bought from `retarget_q4` on another ($37.97): `first_click` credits the newsletter,
+`last_click` the retargeting ad. Revenue by campaign over the 8 orders, last click → first click:
+`retarget_q4` $278.96 → $219.00, `newsletter_oct` $24.00 → $83.96, organic $77.99 → $155.99, Direct
+$81.00 → $3.00; `fall_launch` $0 under every model (the README has every model).
+
 ## Measured
 
 Every batch of 2026-09-28, runtime 3.0 (the committed runtime) first:
@@ -166,6 +192,8 @@ Every batch of 2026-09-28, runtime 3.0 (the committed runtime) first:
 | `...3ef1592e-t1-9be5af`, `...c79bab32-t1-e1162f`, `...ca8d31f6-t1-93fc23`, `...ffcdfa20-t1-4e81f3`, `...498a7a1d-t1-b75e5c` (04:59 to 13:40 UTC) | FAILED at creation: Cloud Resource Manager API not enabled (below) | 4.5 to 9.8 s | 0 | 0 | $0 |
 | `...596c23f6-t1-2c6856` (14:03 UTC) | SUCCEEDED: `make spark-submit` after the API was enabled; compute 159.1 s, write 105.2 s; loads 2.7 s, 2.7 s | 368 s (60 / 308) | 0.4093 | 25.58 | $0.026 |
 | `...f2954fae-t1-b5bdad` (14:19 UTC) | SUCCEEDED: the full Airflow run (`docs/orchestration.md`); compute 166.9 s, write 116.5 s; loads 2.8 s, 2.7 s | 389 s (60 / 329) | 0.4409 | 27.56 | $0.028 |
+| `...bef2f7d9-t1-c95cc0` (14:53 UTC) | SUCCEEDED: `make spark-submit` with the site's export in Stage 2; 4,926 orders; compute 201.5 s, write 135.7 s | 444 s (56 / 388) | 0.5190 | 32.44 | $0.033 |
+| `...e7c2318c-t1-0973b2` (15:03 UTC) | SUCCEEDED: the full Airflow run with the site's export (`docs/orchestration.md`); 73,962 rows written, the three checks passed; compute 166.9 s, write 114.7 s | 375 s (48 / 328) | 0.4364 | 27.27 | $0.028 |
 
 History: runtime 2.3.39, first a diagnostic batch, then a stand-in while 3.0 batches could not be created:
 
@@ -189,17 +217,21 @@ Prices: standard tier, us-central1, $0.06 per DCU-hour and $0.000054795 per GB-h
 per second with a 1-minute minimum ([pricing](https://cloud.google.com/dataproc-serverless/pricing),
 now titled "Managed Service for Apache Spark (formerly Dataproc) pricing").
 
-**Runtime 3.0, completed.** Both batches that completed ran the committed code (`230e52e7cb36`) with
-the one-file write: each load job took under 3 s, and the connector deleted its staged files after the
-loads. Like the first 3.0 batch (below), both ran as a single driver in Spark local mode (application
-id `local-...`, which also names the connector's staging paths; every log entry comes from the driver
-node, while a 2.3 batch also logged from two workers), averaging 4.8 DCUs while running, against
-about 12 on 2.3. So on 3.0 the job itself is slower (compute 159 to 167 s and write 105 to 117 s,
-against 76 to 79 s and 58 to 59 s on 2.3) and the batch is longer (368 to 389 s against 218 to 225 s),
-but it uses fewer DCU-hours (0.41 to 0.44 against 0.51) and costs a little less ($0.026 to $0.028
-against $0.032 to $0.033). About a quarter of a 3.0 batch is Serverless around the job: 60 s pending,
-about 20 s from RUNNING to the Spark application's start, and about 20 s after the job's last line.
-Why Dataproc runs this batch in local mode on 3.0 is not known; that is for Stage 4 to measure.
+**Runtime 3.0, completed.** Four batches have completed, all with the committed code (`230e52e7cb36`)
+and the one-file write, and each time the connector deleted its staged files after the loads. Like the
+first 3.0 batch (below), all four ran as a single driver in Spark local mode (application id
+`local-...`, which also names the connector's staging paths), averaging 4.8 DCUs while running, against
+about 12 on 2.3. The two on the sample alone (`596c23f6`, `f2954fae`: every log entry from the driver
+node, while a 2.3 batch also logged from two workers; each load job under 3 s) show the trade: on 3.0
+the job itself is slower (compute 159 to 167 s and write 105 to 117 s, against 76 to 79 s and 58 to 59 s
+on 2.3) and the batch is longer (368 to 389 s against 218 to 225 s), but it uses fewer DCU-hours (0.41
+to 0.44 against 0.51) and costs a little less ($0.026 to $0.028 against $0.032 to $0.033). The two with
+the site's export in Stage 2 (`bef2f7d9`, `e7c2318c`: 8 more orders of 4,926) spread wider: 444 s and
+375 s, compute 201.5 s and 166.9 s, write 135.7 s and 114.7 s, 0.52 and 0.44 DCU-hours, $0.033 and
+$0.028, so the slower one used as many DCU-hours as a 2.3 batch. About a quarter of a 3.0 batch is
+Serverless around the job: 48 to 60 s pending, and on the sample-only batches about 20 s from RUNNING
+to the Spark application's start and about 20 s after the job's last line. Why Dataproc runs this
+batch in local mode on 3.0 is not known; that is for Stage 4 to measure.
 
 **The first 3.0 batch** (`...e580908d-t1-8f7f6a`, the TTL stop) ran an earlier code version,
 `61bf231e63fc`, from before the one-file write and before the journey fix. Its computation took about
@@ -219,16 +251,18 @@ including one with the first batch's exact configuration, a retry 17 minutes lat
 and `make spark-submit` at 13:40 UTC, while runtime 2.3 batches were created and ran (why the first
 3.0 batch, at 04:27 UTC, was created without the API is not known). The API was
 enabled on 2026-09-28 at 14:02 UTC (`gcloud services enable cloudresourcemanager.googleapis.com
---project <project>`, no charge), and both 3.0 batches since were created and succeeded. A new
+--project <project>`, no charge), and all four 3.0 batches since were created and succeeded. A new
 project needs the same step before its first batch.
 
 ## Limitations
 
 - **One device per person on the sample**: first click, linear and the rest only move credit between
-  channels seen on the device that bought. Cross-device journeys need the site's stitched export.
-- **Orders without a session are not attributed** (none on the sample). A signed-in purchase with no
-  session could be attributed to the person's earlier sessions; Stage 2's channel marts leave it out,
-  and so does this.
+  channels seen on the device that bought. Cross-device journeys need the site's stitched export: 4
+  of its 8 attributed orders, one day of simulated visits seconds apart.
+- **Orders without a session are not attributed** (none on the sample; 5 of the site's 13, $378.98, all
+  sent with consent denied). A signed-in purchase with no session could be attributed to the person's
+  earlier sessions; Stage 2's channel marts leave it out, and so does this (on the site, neither
+  signed-in one has a person with any session).
 - **The mart keeps zero rows**: every touch appears under every model, so a channel that touched an
   order but got no credit under a model has a row with 0 attributed orders (5,532 rows, 4,982 non-zero).
 - **The two tables are written one after the other** (two `WRITE_TRUNCATE` load jobs, about 20 s

@@ -8,8 +8,9 @@ every column (the runner refuses to finish a model with an undocumented column),
 labelled `app:tagline, stage:2`. Everything lives in one project, in the US multi-region,
 because the public sample is in the US and BigQuery cannot join across locations.
 
-Numbers in this file are from the build of 2026-09-27 (GA4 sample only; the site's export
-does not exist yet). `make numbers` prints them again.
+Numbers for the GA4 sample are from the build of 2026-09-27; the build of 2026-09-28 added the
+site's own export (one day, 2026-09-27) and left every sample number unchanged. The site's
+numbers are [below](#reconciled-numbers-site-export). `make numbers` prints both again.
 
 ---
 
@@ -53,18 +54,18 @@ Build order is the numeric prefix of the model files: `10_stg_events`, `20_stg_i
 
 ## Tables: grain, key, layout
 
-| Table | One row per | Key | Partition / cluster | Rows (sample) |
-|---|---|---|---|---|
-| `tagline_raw.products` | catalog SKU | `item_id` | none (20 rows) | 20 |
-| `tagline_raw.campaign_costs` | day × data source × source / medium / campaign | `cost_date, source, session_source, session_medium, session_campaign` | none (556 rows) | 556 |
-| `tagline_staging.stg_events` | GA4 event (exact export duplicates collapsed) | `source, event_key` | `event_date` / `source, event_name` | 4,295,584 |
-| `tagline_staging.stg_items` | item in an ecommerce event's `items` array | `source, event_key, item_index` | `event_date` / `source, event_name, item_id` | 3,982,732 |
-| `tagline_staging.int_identity` | device (`user_pseudo_id`) | `source, user_pseudo_id` | none: no date grain, always read whole | 270,154 |
-| `tagline_marts.fct_sessions` | session | `source, user_pseudo_id, ga_session_id` (also `session_key`) | `session_date` / `source` | 360,129 |
-| `tagline_marts.fct_orders` | order | `source, order_id` | `order_date` | 5,368 |
-| `tagline_marts.fct_order_items` | order line | `source, order_id, line_number` | `order_date` | 15,063 |
-| `tagline_marts.mart_campaign_daily` | date × source × session source / medium / campaign | all five | `date` | 2,634 |
-| `tagline_marts.mart_funnel_daily` | date × source | `date, source` | `date` | 92 |
+| Table | One row per | Key | Partition / cluster | Rows (sample) | Rows (site) |
+|---|---|---|---|---|---|
+| `tagline_raw.products` | catalog SKU | `item_id` | none (20 rows) | 20 (the site's catalog) | |
+| `tagline_raw.campaign_costs` | day × data source × source / medium / campaign | `cost_date, source, session_source, session_medium, session_campaign` | none (556 rows) | 190 | 366 |
+| `tagline_staging.stg_events` | GA4 event (exact export duplicates collapsed) | `source, event_key` | `event_date` / `source, event_name` | 4,295,584 | 1,433 |
+| `tagline_staging.stg_items` | item in an ecommerce event's `items` array | `source, event_key, item_index` | `event_date` / `source, event_name, item_id` | 3,982,732 | 3,137 |
+| `tagline_staging.int_identity` | device (`user_pseudo_id`) | `source, user_pseudo_id` | none: no date grain, always read whole | 270,154 | 48 |
+| `tagline_marts.fct_sessions` | session | `source, user_pseudo_id, ga_session_id` (also `session_key`) | `session_date` / `source` | 360,129 | 48 |
+| `tagline_marts.fct_orders` | order | `source, order_id` | `order_date` | 5,368 | 13 |
+| `tagline_marts.fct_order_items` | order line | `source, order_id, line_number` | `order_date` | 15,063 | 22 |
+| `tagline_marts.mart_campaign_daily` | date × source × session source / medium / campaign | all five | `date` | 2,634 | 5 |
+| `tagline_marts.mart_funnel_daily` | date × source | `date, source` | `date` | 92 | 1 |
 
 Partitioning is by the table's date because the spec asks for it and because analysts'
 reads will filter on dates; clustering is on the columns such reads are expected to filter on
@@ -99,9 +100,10 @@ categories in the sample's reports), except in `transaction_id` and item text fi
 `campaign` and `term` event parameters.
 
 **`tagline_site`**: the site's own export, `analytics_<property_id>` in the same project,
-created when GA4 is linked to BigQuery. It does not exist yet. Set
-`TAGLINE_GA4_DATASET=analytics_<property_id>` in `tagline/.env` and the next build lists the
-dataset's tables (`sources.py`, unit tested):
+created when GA4 is linked to BigQuery. It holds one day so far, the simulator's live run:
+`events_20260927` (1,433 rows) and `pseudonymous_users_20260927` (48 rows, not read), and no
+streaming table. With `TAGLINE_GA4_DATASET=analytics_<property_id>` in `tagline/.env`, every
+build lists the dataset's tables (`sources.py`, unit tested):
 
 - every daily table `events_YYYYMMDD` is read, through the wildcard `events_*` with
   `_TABLE_SUFFIX BETWEEN '<first day>' AND '<last day>'` (an eight-digit range cannot match
@@ -133,7 +135,8 @@ every SQL file and fails if one is not).
    the same `event_key` (a fingerprint of the entire row) in the same source are collapsed
    to one; `export_row_count` records how many there were. The sample has none: 4,295,584
    export rows, 4,295,584 staged events (check 05 enforces this and the documented count of
-   0). The site-export fixture plants one and sees it collapsed.
+   0). The site-export fixture plants one and sees it collapsed. The site's export has none
+   either: 1,433 export rows, 1,433 staged events.
 2. **Which `transaction_id`.** `ecommerce.transaction_id`, else the `transaction_id` event
    parameter, each cleaned first (`''` and `(not set)` become NULL), so a `(not set)` in
    `ecommerce` falls back to the parameter. In the sample, 883 purchases say `(not set)` in
@@ -212,17 +215,32 @@ joins the same person (`person_device_count = 2`), a laptop used by two accounts
 apart (`shared_device`), and two consent-denied purchases with no device and no session are
 kept as orders, one with its `user_id`'s person, one with a per-order anonymous id.
 
+**On the site's export** stitching happens on real GA4 rows: 48 devices, 29 of them signed in
+(`user_id`, 20 people) and 19 never (`anonymous_device`). 8 people are on two or more devices
+(17 devices; one person on 3). Each of the 29 signed-in devices has the simulator's account id for
+its person, and no account is split. The simulator planned 11 people who sign in on two or more
+devices; the other 3 signed in on a second device that denied consent, whose rows carry the
+account's `user_id` but no device id, so that device is not counted (details and the list per
+person in the [README](../README.md#the-sites-own-export)). Every session on a signed-in device
+is `signed_in_session`, because the simulator signs in during the visit's only session: the
+export has no `device_user_id` or `shared_device` case.
+
 **Consent-denied (cookieless) rows.** With Consent Mode's analytics storage denied, gtag.js
 sends cookieless pings, and Google's export includes the `user_id` the site set. Several
 write-ups report that such rows have no `user_pseudo_id` and no `ga_session_id`; Google's
 2023 developer blog says instead that each such session gets a different `user_pseudo_id`.
-Neither has been observed here yet, because it needs the live export. The model handles both:
+The site's export shows the first: all 415 rows with `analytics_storage = No` (from the 20
+devices that rejected or ignored the banner) have neither id, and 75 of them carry a `user_id`
+(8 accounts). Devices that accepted are in the export with their `user_pseudo_id` and
+`analytics_storage = Yes`, even the 3 whose every recorded hit was sent before they accepted. The
+model handles both cases:
 
-- NULL ids: the event has no `session_key`, so it is in no session and not in `int_identity`;
-  `events_without_session` in `make numbers` counts them. A purchase among them is still an
-  order in `fct_orders`, with the person from the table above, and checks 02 and 03 count it
-  as its own documented bucket. It is not in `mart_campaign_daily` or `mart_funnel_daily`,
-  which are built from sessions.
+- NULL ids (what the site's export has): the event has no `session_key`, so it is in no session
+  and not in `int_identity`; `events_without_session` in `make numbers` counts them (415). A
+  purchase among them is still an order in `fct_orders`, with the person from the table above, and
+  checks 02 and 03 count it as its own documented bucket. It is not in `mart_campaign_daily` or
+  `mart_funnel_daily`, which are built from sessions. On the site: 5 orders, $378.98, 3
+  `cookieless` and 2 `signed_in_purchase`.
 - A new `user_pseudo_id` per session: each denied session becomes its own device and, unless
   it carries a `user_id`, its own anonymous person, so person counts go up with nothing to
   flag them. `fct_sessions.analytics_storage` says which sessions were denied.
@@ -256,8 +274,12 @@ Each session gets one `session_source` / `session_medium` / `session_campaign`;
    `google / cpc / <Ads campaign name>`. The first event in the session that carries the
    record wins (Google repeats it on every event of the session). Third-party write-ups
    (Adswerve, tanelytics) report that `cross_channel_campaign` is the one that matches the
-   session source / medium in GA4's reports; that is not verified here until the live export
-   exists.
+   session source / medium in GA4's reports; that is not verified here against a GA4 report. In
+   the site's export it has a value on all 1,018 consented rows and equals `manual_campaign`
+   except on the 13 direct sessions (259 rows), where `manual_campaign` is `(not set)` and
+   `cross_channel_campaign` is `(direct) / (none) / (direct)`; `google_ads_campaign` is empty
+   (no Ads clicks). All 48 site sessions are attributed by this rule, each to its device's
+   planned landing.
 2. `collected_at_landing`: the traffic source collected at the session's landing:
    `collected_traffic_source.manual_*` when present, else the `source` / `medium` /
    `campaign` event parameters, on the session's first `page_view`; else on an event before
@@ -283,7 +305,8 @@ collect more than one distinct source, which is why the landing rule matters.
 scope), used only by rule 3. The rule differs by source because the fields differ, so site
 and sample sessions are not attributed identically: GA4's reports attribute a direct visit
 to an earlier campaign (last non-direct click), and whether the export's session record does
-the same is not observed yet, while the sample's rules only look inside the session.
+the same is still not observed (the simulator never makes a second visit on a device), while
+the sample's rules only look inside the session.
 
 Orders take the attribution of the session they were placed in; `mart_campaign_daily`
 groups sessions, orders and revenue by that triple and joins spend from
@@ -312,7 +335,7 @@ path.
 |---|---|---|
 | `unit_cost_usd`, `gross_margin_rate` for the 20 site products | `tagline_raw.products`, `fct_order_items` | margin = a rate per category (Apparel 0.55, Drinkware 0.60, Bags 0.50, Office 0.62, Stickers 0.80) ± a seeded jitter of up to 0.03; `cost_is_synthetic`, table and column descriptions; check 09 |
 | daily ad spend | `tagline_raw.campaign_costs`, `mart_campaign_daily.cost_usd`, `roas`, `cost_per_order` | seeded generator in `reference.py`; `is_synthetic`, descriptions say SYNTHETIC; check 09 fails otherwise |
-| every simulator visit, order and account | the site's GA4 property and export once live mode runs, then every `source = 'tagline_site'` row in `stg_events`, `fct_*` and `mart_*` | docs only (this file, the README, the simulator's live-mode banner): no column flags it and check 09 does not cover it |
+| every simulator visit, order and account | the site's GA4 property and its export (`events_20260927`, from the live run), then every `source = 'tagline_site'` row in `stg_events`, `fct_*`, `mart_*` and the Stage 3 tables | docs only (this file, the README, the simulator's live-mode banner): no column flags it and check 09 does not cover it |
 | the site-export fixture | temporary `fake_ga4_events_*` tables in `tagline_raw`, deleted at the end of `make fixture` | table descriptions, `purpose:fixture` label, 24-hour table expiry |
 
 Campaign spend for the sample is sized from the sample's own traffic, as the model
@@ -366,6 +389,27 @@ items). `fct_orders` reports purchase revenue; `fct_order_items` reports what th
 A full build plus checks processes 8.57 GiB and bills 8.62 GiB, about $0.05 at on-demand
 prices; `stg_events` is 3.34 GiB of it. The cost table in the README has the breakdown.
 
+## Reconciled numbers (site export)
+
+The site's own export, `events_20260927`, after the build of 2026-09-28 (`make numbers`); checks 02,
+03, 04 and 06 reconcile these per source. The simulator's record of the same run is in
+`simulator/out/live/`, and the README sets the two side by side.
+
+| | |
+|---|---|
+| export rows read | 1,433 (one daily table; no streaming table) |
+| events staged | 1,433 (0 exact duplicates); 1,018 consented, 415 consent-denied with no device and no session id |
+| devices | 48 (29 signed in, 19 anonymous) |
+| people | 39 with a session (20 by `user_id`, 8 of them on two or more devices; 19 anonymous devices); 5 more with only an order in no session (2 by `user_id`, 3 `cookieless`) |
+| sessions | 48 (45 engaged) |
+| purchase events → orders | 13 → 13 (0 repeats; 13 distinct `transaction_id`s, none on two devices, none missing) |
+| orders in a session / in none | 8 ($461.95) / 5 ($378.98) |
+| sessions with an order | 8 |
+| revenue | $840.93 (tax $67.28, shipping $93.00) |
+| order lines | 22 (33 units, $840.93; all matched to the catalog, synthetic cost $371.01, margin 56%) |
+
+The same build with both sources processed 8.57 GiB and billed 8.62 GiB, as without the site.
+
 ---
 
 ## Stage 3 tables
@@ -382,10 +426,10 @@ tagline_marts.fct_orders ───┬──► tagline_marts.fct_attribution ─
 tagline_marts.fct_sessions ─┘
 ```
 
-| Table | One row per | Key | Partition | Rows (sample) |
-|---|---|---|---|---|
-| `tagline_marts.fct_attribution` | order × attribution model × touch (session) | `source, order_id, model, session_key` | `order_date` | 73,890 (4,918 orders, 12,315 touches, 6 models) |
-| `tagline_marts.mart_attribution_daily` | order date × source × model × session source / medium / campaign × `lookback_complete` | all seven | `order_date` | 5,532 (4,982 with credit) |
+| Table | One row per | Key | Partition | Rows (sample) | Rows (site) |
+|---|---|---|---|---|---|
+| `tagline_marts.fct_attribution` | order × attribution model × touch (session) | `source, order_id, model, session_key` | `order_date` | 73,890 (4,918 orders, 12,315 touches, 6 models) | 72 (8 orders, 12 touches) |
+| `tagline_marts.mart_attribution_daily` | order date × source × model × session source / medium / campaign × `lookback_complete` | all seven | `order_date` | 5,532 (4,982 with credit) | 24 (all with credit) |
 
 Every touch appears under every model, weight 0 included, so the mart has rows with 0 attributed
 orders. As with Stage 2's facts, the date partitions prune nothing at this volume.

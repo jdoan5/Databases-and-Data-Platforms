@@ -46,9 +46,9 @@ CREATE OR REPLACE TABLE `{{ project }}.{{ marts }}.fct_orders`
 PARTITION BY order_date
 AS
 WITH purchases AS (
+  -- stg_events' purchase events, narrow (int_purchases), rather than a scan of all 4.3 million events (Stage 4)
   SELECT *
-  FROM `{{ project }}.{{ staging }}.stg_events`
-  WHERE event_name = 'purchase'
+  FROM `{{ project }}.{{ staging }}.int_purchases`
 ),
 
 duplicates AS (

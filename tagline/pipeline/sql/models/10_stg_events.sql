@@ -173,7 +173,8 @@ WITH raw_events AS (
       ORDER BY pos
     ) AS items
   FROM `{{ sample_table }}` AS t
-  WHERE _TABLE_SUFFIX BETWEEN '{{ sample_start }}' AND '{{ sample_end }}'
+  -- incremental_filter: ' AND FALSE' when make build-incremental processes no sample day; empty otherwise
+  WHERE _TABLE_SUFFIX BETWEEN '{{ sample_start }}' AND '{{ sample_end }}'{{ incremental_filter }}
   {{ site_union }}
 ),
 
@@ -298,8 +299,14 @@ purchase_order AS (
     ) > 1 AS is_duplicate_purchase,
     MIN(COALESCE(user_pseudo_id, '')) OVER (PARTITION BY source, order_id)
       != MAX(COALESCE(user_pseudo_id, '')) OVER (PARTITION BY source, order_id) AS is_transaction_id_collision
-  FROM deduped
-  WHERE event_name = 'purchase'
+  FROM (
+    SELECT source, event_key, order_id, user_pseudo_id, event_timestamp
+    FROM deduped
+    WHERE event_name = 'purchase'
+    -- purchase_history: make build-incremental adds the earlier days' purchases here (from int_purchases), so the
+    -- dedupe and the collision test see them; empty in a full build, which reads every day
+    {{ purchase_history }}
+  )
 )
 
 SELECT

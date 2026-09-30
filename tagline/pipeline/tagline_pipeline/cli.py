@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .config import ConfigError, load_config
 from .costs import JobStat, format_cost_table, write_json
+from .incremental import DEFAULT_LOOKBACK_DAYS
 
 EXIT_OK, EXIT_CHECK_FAILED, EXIT_CONFIG, EXIT_GOOGLE = 0, 1, 2, 3
 
@@ -51,9 +52,31 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--site-dataset", help="override TAGLINE_GA4_DATASET for this run")
     b.add_argument("--site-table-prefix", help="table prefix in the site dataset (default events_)")
     b.add_argument("--costs-json", metavar="PATH", help="also write the cost table as JSON")
+    b.add_argument(
+        "--incremental",
+        action="store_true",
+        help="the daily path: only the export days that are new or may have changed (the site's --lookback days, any day "
+        "whose export table no longer matches what was recorded when it was staged, and any day not loaded yet), in one "
+        "BigQuery script; needs an earlier full build",
+    )
+    b.add_argument("--since", metavar="YYYYMMDD", help="with --incremental: reprocess every source from this day on")
+    b.add_argument(
+        "--lookback",
+        type=int,
+        default=None,
+        help=f"with --incremental: how many of the site's days to re-read at least, counted back from its newest daily "
+        f"table (default {DEFAULT_LOOKBACK_DAYS}, at least 1; days whose export table changed since they were staged are "
+        "re-read too)",
+    )
+    b.add_argument("--print-script", action="store_true", help="with --incremental: print the script instead of running it")
 
     c = sub.add_parser("check", help="run the data checks against the built tables")
     c.add_argument("--costs-json", metavar="PATH")
+    c.add_argument(
+        "--dir",
+        metavar="DIR",
+        help="run the checks in DIR instead (same convention: no rows = pass), e.g. the DAG's attribution checks",
+    )
 
     sub.add_parser("numbers", help="print the reconciled numbers (events, sessions, orders, revenue, identity, cost)")
 
@@ -105,7 +128,32 @@ def _run(args: argparse.Namespace, cfg, stats: list[JobStat]) -> int:
         return EXIT_OK
 
     if args.command == "build":
-        result = pipeline.build(cfg, bq, dry_run=args.dry_run, start_at=args.start_at, only=args.only, stats=stats)
+        if args.incremental:
+            if args.dry_run or args.start_at or args.only:
+                print("--incremental cannot be combined with --dry-run, --from or --only (use --print-script)", file=sys.stderr)
+                return EXIT_CONFIG
+            from .incremental import WindowError
+
+            try:
+                result = pipeline.build_incremental(
+                    cfg,
+                    bq,
+                    since=args.since,
+                    # `is None`, not `or`: --lookback 0 must reach plan_window and be refused, not become the default
+                    lookback=DEFAULT_LOOKBACK_DAYS if args.lookback is None else args.lookback,
+                    stats=stats,
+                    print_script=args.print_script,
+                )
+            except WindowError as e:
+                print(f"incremental build: {e}", file=sys.stderr)
+                return EXIT_CONFIG
+            if args.print_script or args.no_check or (result.window is not None and result.window.empty):
+                return EXIT_OK
+        elif args.since or args.lookback is not None or args.print_script:
+            print("--since, --lookback and --print-script need --incremental", file=sys.stderr)
+            return EXIT_CONFIG
+        else:
+            result = pipeline.build(cfg, bq, dry_run=args.dry_run, start_at=args.start_at, only=args.only, stats=stats)
         if args.dry_run or args.no_check:
             return EXIT_OK
         checks, _ = pipeline.run_checks(cfg, bq, result.site, stats=stats)
@@ -113,7 +161,7 @@ def _run(args: argparse.Namespace, cfg, stats: list[JobStat]) -> int:
         return EXIT_OK if all(not r.failures for r in checks) else EXIT_CHECK_FAILED
 
     if args.command == "check":
-        checks, _ = pipeline.run_checks(cfg, bq, stats=stats)
+        checks, _ = pipeline.run_checks(cfg, bq, stats=stats, directory=Path(args.dir).resolve() if args.dir else None)
         print(pipeline.format_checks(checks))
         return EXIT_OK if all(not r.failures for r in checks) else EXIT_CHECK_FAILED
 

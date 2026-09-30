@@ -26,6 +26,10 @@ SUMMARY_MARKER = "ATTRIBUTION_SUMMARY"
 _NAME_RE = re.compile(r"^[A-Za-z0-9_]{1,1024}$")
 _PROJECT_RE = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$")
+# Where Spark runs its tasks: `local[N]` / `local[*]` (N threads in the driver JVM) or `dataproc` (runtime 3.0's
+# own cluster manager, which asks Dataproc for executor nodes). Without the argument the job keeps the master the
+# runtime gives it; on runtime 3.0 that is `local`, one thread (Stage 4, experiment 6).
+_MASTER_RE = re.compile(r"^(local(\[([1-9][0-9]{0,2}|\*)\])?|dataproc)$")
 
 
 class AttributionProblem(RuntimeError):
@@ -39,6 +43,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--temp-bucket", required=True, help="bucket for the connector's staged Parquet files (no gs://)")
     parser.add_argument("--expected-spark-version", default=None, help="logged against the runtime's Spark version")
     parser.add_argument("--no-write", action="store_true", help="compute and check, write nothing")
+    parser.add_argument("--spark-master", default=None, help="local[N], local[*], local or dataproc; default: the runtime's")
     args = parser.parse_args(argv)
     if not _PROJECT_RE.fullmatch(args.project):
         parser.error(f"--project {args.project!r} is not a valid project id")
@@ -47,6 +52,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args.temp_bucket = args.temp_bucket.removeprefix("gs://").rstrip("/")
     if not _BUCKET_RE.fullmatch(args.temp_bucket):
         parser.error(f"--temp-bucket {args.temp_bucket!r} is not a valid bucket name")
+    if args.spark_master is not None and not _MASTER_RE.fullmatch(args.spark_master):
+        parser.error(f"--spark-master {args.spark_master!r} is not local, local[N], local[*] or dataproc")
     return args
 
 
@@ -131,8 +138,12 @@ def run(spark, args: argparse.Namespace) -> dict[str, Any]:
 
     found = models.problems(attribution, touches)
     computed = time.monotonic()
+    sc = spark.sparkContext
     summary: dict[str, Any] = {
         "spark_version": spark.version,
+        "spark_master": sc.master,
+        "app_id": sc.applicationId,
+        "default_parallelism": sc.defaultParallelism,
         "expected_spark_version": args.expected_spark_version,
         "orders": touches.select("source", "order_id").distinct().count(),
         "touches": touches.count(),
@@ -149,6 +160,9 @@ def run(spark, args: argparse.Namespace) -> dict[str, Any]:
         .withColumnRenamed("sum(weight)", "orders").withColumnRenamed("sum(attributed_revenue_usd)", "revenue")
         .collect()
     }
+    summarized = time.monotonic()
+    # The counts above are Spark jobs too: timed apart, so the write path can be measured on its own (Stage 4).
+    summary["summary_seconds"] = round(summarized - computed, 1)
     if args.expected_spark_version and spark.version != args.expected_spark_version:
         print(f"WARNING: runtime Spark {spark.version}, but pyspark is pinned to {args.expected_spark_version}", file=sys.stderr)
     if found:
@@ -161,7 +175,11 @@ def run(spark, args: argparse.Namespace) -> dict[str, Any]:
             description, columns = tables.TABLES[name]
             apply_docs(args.project, table_id(args, name), description, columns)
     summary["written"] = not args.no_write
-    summary["write_seconds"] = round(time.monotonic() - computed, 1)
+    ended = time.monotonic()
+    # write_seconds keeps its Stage 3 meaning (everything after the checks: the summary's counts, then the writes)
+    # so it compares with earlier runs; write_only_seconds is the two writes and their table docs alone.
+    summary["write_seconds"] = round(ended - computed, 1)
+    summary["write_only_seconds"] = round(ended - summarized, 1)
     print(f"{SUMMARY_MARKER} {json.dumps(summary, sort_keys=True)}")
     return summary
 
@@ -170,11 +188,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     from pyspark.sql import SparkSession
 
-    spark = (
-        SparkSession.builder.appName("tagline-attribution")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
+    builder = SparkSession.builder.appName("tagline-attribution").config("spark.sql.session.timeZone", "UTC")
+    if args.spark_master:
+        # The Batch API refuses spark.master as a property on runtime 3.0 (only `local` is accepted), so the batch
+        # passes it as an argument and the job sets it before the session exists.
+        builder = builder.master(args.spark_master)
+    spark = builder.getOrCreate()
     try:
         run(spark, args)
     except AttributionProblem as e:

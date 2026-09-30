@@ -10,6 +10,16 @@ WITH keys AS (
     COUNTIF(source IS NULL OR event_key IS NULL OR item_index IS NULL)
   FROM `{{ project }}.{{ staging }}.stg_items`
   UNION ALL
+  SELECT 'int_purchases', COUNT(*),
+    COUNT(DISTINCT TO_JSON_STRING(STRUCT(source, event_key))),
+    COUNTIF(source IS NULL OR event_key IS NULL)
+  FROM `{{ project }}.{{ staging }}.int_purchases`
+  UNION ALL
+  SELECT 'int_device_days', COUNT(*),
+    COUNT(DISTINCT TO_JSON_STRING(STRUCT(source, user_pseudo_id, event_date))),
+    COUNTIF(source IS NULL OR user_pseudo_id IS NULL OR event_date IS NULL)
+  FROM `{{ project }}.{{ staging }}.int_device_days`
+  UNION ALL
   SELECT 'int_identity', COUNT(*),
     COUNT(DISTINCT TO_JSON_STRING(STRUCT(source, user_pseudo_id))),
     COUNTIF(source IS NULL OR user_pseudo_id IS NULL)

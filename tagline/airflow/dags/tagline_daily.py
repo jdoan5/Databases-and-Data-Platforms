@@ -1,22 +1,27 @@
 """
 ### tagline_daily
 
-Every day: wait for the site's GA4 export (only when one is configured), rebuild the Stage 2 BigQuery
-models in lineage order, run the Stage 2 data checks, run the Stage 3 multi-touch attribution job on
-Dataproc Serverless, and check its output against Stage 2.
+Every day: wait for the site's GA4 export (only when one is configured), bring the Stage 2 BigQuery tables
+up to date, run the Stage 2 data checks, run the Stage 3 multi-touch attribution job on Dataproc Serverless,
+and check its output against Stage 2.
 
 ```
-check_ga4_export ─┬─► wait_for_ga4_export ─┬─► prepare_sources
+check_ga4_export ─┬─► wait_for_ga4_export ─┬─► prepare_sources ─► build_mode
                   └─► no_ga4_export ───────┘
-prepare_sources ─► stg_events ─┬─► stg_items ──────────────────────────────────┐
-                               └─► int_identity ─► fct_sessions ─► fct_orders ─┴─► fct_order_items ──┐
-                                                   fct_sessions ─► mart_campaign_daily ──────────────┤
-                                                   fct_sessions ─► mart_funnel_daily ────────────────┴─► stage2_checks (9)
+build_mode ─┬─► stage2_incremental ─────────────────────────────────────────────────────────────────┐   (the default)
+            └─► stg_events ─┬─► stg_items ─────────────────────────────────────┐                     │   (full_refresh)
+                            ├─► int_purchases ──────────────────► fct_orders ──┴─► fct_order_items ──┤
+                            └─► int_device_days ─► int_identity ─► fct_sessions ─► fct_orders         │
+                                                                   fct_sessions ─► mart_campaign_daily┤
+                                                                   fct_sessions ─► mart_funnel_daily ─┴─► stage2_checks (9)
 stage2_checks ─► attribution_enabled ─► spark_attribution ─► attribution_checks (3) ─► run_summary
 ```
-(stg_events also feeds fct_sessions and fct_orders, and int_identity feeds fct_orders: the edges are read
-from each model's SQL.) The GA4 sensor runs only when TAGLINE_GA4_DATASET is set, and soft-fails to
-skipped after 8 hours, so the build still runs on the export days that did arrive.
+By default a run is the daily incremental build (`stage2_incremental`: the export days that are new or may
+have changed, applied to every table in one BigQuery script and one transaction; Stage 4). With the run
+parameter `{"full_refresh": true}` it rebuilds every model from every export day instead, one task per model
+(stg_events also feeds fct_sessions, and int_identity feeds fct_orders: the edges are read from each model's
+SQL). The GA4 sensor runs only when TAGLINE_GA4_DATASET is set, and soft-fails to skipped after 8 hours, so
+the build still runs on the export days that did arrive.
 
 Every BigQuery job carries maximumBytesBilled (TAGLINE_MAX_BYTES_BILLED, 10 GB by default) and the
 Stage 2 labels; the Dataproc batch has a 30-minute TTL and app=tagline / stage=3 labels.
@@ -40,6 +45,11 @@ from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk import DAG, Param, PokeReturnValue, TaskGroup, task
 
 from tagline_airflow import dataproc, settings, stage2
+
+try:  # Airflow 3 task SDK
+    from airflow.sdk.exceptions import AirflowFailException
+except ImportError:  # pragma: no cover - Airflow 2
+    from airflow.exceptions import AirflowFailException
 from tagline_airflow.operators import AttributionBatchOperator, NoRowsCheckOperator, Stage2ModelOperator
 
 ATTRIBUTION_CHECKS_DIR = Path(__file__).parent / "tagline_airflow" / "sql" / "attribution_checks"
@@ -84,6 +94,12 @@ with DAG(
             type="boolean",
             description="Run the Spark attribution job and its checks after the Stage 2 build.",
         ),
+        "full_refresh": Param(
+            False,
+            type="boolean",
+            description="Rebuild every Stage 2 table from every export day (one task per model) instead of the daily "
+            "incremental build, which processes only the export days that are new or may have changed.",
+        ),
     },
     user_defined_macros={"attribution_batch_id": dataproc.batch_id},
     tags=["tagline", "stage-2", "stage-3", "bigquery", "dataproc"],
@@ -125,9 +141,33 @@ with DAG(
     sources = prepare_sources()
     check_ga4_export() >> [wait_for_ga4_export(), no_ga4_export] >> sources
 
-    # 3. One task per Stage 2 model, wired from the tables each model's SQL reads.
+    # 3. The Stage 2 tables: the daily incremental build (one task, one BigQuery script), or with full_refresh one
+    #    task per model, wired from the tables each model's SQL reads.
 
     deps = stage2.model_dependencies(stage2.MODELS)
+    root_models = [name for name, upstream in deps.items() if not upstream]
+
+    @task.branch(task_id="build_mode")
+    def build_mode(params: dict | None = None) -> str | list[str]:
+        return root_models if (params or {}).get("full_refresh", False) else "stage2_incremental"
+
+    @task(task_id="stage2_incremental")
+    def stage2_incremental() -> list[dict]:
+        """The export days that are new or may have changed (the 4 up to the site's newest daily table, any whose export
+        table no longer matches what was recorded when it was staged, and any not loaded yet), applied to every table,
+        and to that record, in one BigQuery script and one transaction (tagline_pipeline/incremental.py). A failed script
+        changes nothing, so a retry starts from the same tables; the script replaces what it writes, so running it again
+        leaves the same tables."""
+        from tagline_pipeline.incremental import WindowError
+
+        try:
+            return stage2.run_incremental(settings.pipeline_config(), bigquery_client())
+        except (WindowError, SystemExit) as e:  # no tables yet (run with full_refresh), or an impossible window
+            raise AirflowFailException(f"incremental build: {e}") from None
+
+    mode = build_mode()
+    incremental = stage2_incremental()
+    sources >> mode >> incremental
     models = {
         m.name: Stage2ModelOperator(task_id=m.name, model=m, project_id=cfg.project, location=cfg.location)
         for m in stage2.MODELS
@@ -137,7 +177,7 @@ with DAG(
             for up in upstream:
                 models[up] >> models[name]
         else:
-            sources >> models[name]
+            mode >> models[name]
 
     # 4. Stage 2's data checks: every one must pass before Spark reads the tables.
 
@@ -149,10 +189,13 @@ with DAG(
                 project_id=cfg.project,
                 location=cfg.location,
                 execution_timeout=timedelta(minutes=10),
+                # after whichever build ran: the other branch is skipped, and a failed build still stops the checks
+                trigger_rule="none_failed_min_one_success",
             )
             for path in stage2.CHECKS
         ]
     [models[name] for name in stage2.leaf_models(deps)] >> stage2_checks
+    incremental >> stage2_checks
 
     # 5. Stage 3: multi-touch attribution on Dataproc Serverless.
 
@@ -217,6 +260,7 @@ with DAG(
 
         ti = context["ti"]
         stats = [ti.xcom_pull(task_ids=task_id) for task_id in bigquery_task_ids]
+        stats += ti.xcom_pull(task_ids="stage2_incremental") or []  # the incremental script's statements
         # The operator's XCom is the batch as it ended, before Dataproc reports its usage: re-read it (at most 3 min).
         batch = settle_usage(ti.xcom_pull(task_ids="spark_attribution"), fetch_batch)
         result = summarize([s for s in stats if s], batch)

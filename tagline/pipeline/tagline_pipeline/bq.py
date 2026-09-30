@@ -22,7 +22,8 @@ DATASET_DESCRIPTIONS = {
     "raw": "Tagline Stage 2: reference data loaded by tagline/pipeline: the site catalog with SYNTHETIC unit costs, "
     "and SYNTHETIC daily campaign costs. While `make fixture` runs, also its temporary fake_ga4_events_* tables "
     "(SYNTHETIC rows shaped like a GA4 export; deleted at the end, 24-hour expiry).",
-    "staging": "Tagline Stage 2: stg_events, stg_items, int_identity, built from the GA4 exports by tagline/pipeline.",
+    "staging": "Tagline Stage 2: stg_events, stg_items, int_purchases, int_device_days, int_identity, built from the GA4 "
+    "exports by tagline/pipeline, and staged_export_days, what the builds read from the site's export (Stage 4).",
     "marts": "Tagline Stage 2: sessions, orders, order items and daily campaign / funnel marts, built by tagline/pipeline.",
 }
 
@@ -36,9 +37,14 @@ def _label(value: str) -> str:
 
 
 class BigQuery:
-    def __init__(self, cfg: Config, client: bigquery.Client | None = None) -> None:
+    def __init__(self, cfg: Config, client: bigquery.Client | None = None, extra_labels: dict[str, str] | None = None) -> None:
         self.cfg = cfg
         self.client = client or bigquery.Client(project=cfg.project, location=cfg.location)
+        self.extra_labels = {_label(k): _label(v) for k, v in (extra_labels or {}).items()}  # e.g. orchestrator=airflow
+        self.last_script_statements: list[JobStat] = []
+
+    def _labels(self, kind: str, step: str) -> dict[str, str]:
+        return {**self.extra_labels, "app": "tagline", "stage": "2", "kind": _label(kind), "step": _label(step)}
 
     # -- datasets ---------------------------------------------------------------------
 
@@ -99,7 +105,7 @@ class BigQuery:
             use_query_cache=False,
             use_legacy_sql=False,
             dry_run=dry_run,
-            labels={"app": "tagline", "stage": "2", "kind": _label(kind), "step": _label(step)},
+            labels=self._labels(kind, step),
         )
         started = time.monotonic()
         job = self.client.query(sql, job_config=job_config, project=self.cfg.project, location=self.cfg.location)
@@ -118,6 +124,79 @@ class BigQuery:
             job_id=job.job_id,
         )
         return rows, stat
+
+    def script(self, step: str, kind: str, sql: str) -> list[JobStat]:
+        """Run a multi-statement script (one job) with the same guard, cache setting and labels as `query`, and return
+        one JobStat per statement BigQuery ran for it (its child jobs, in order), each with the script's job id as
+        parent_job_id. The statements' bytes billed add up to the script's. maximum_bytes_billed applies to each
+        statement."""
+        job_config = bigquery.QueryJobConfig(
+            maximum_bytes_billed=self.cfg.max_bytes_billed,
+            use_query_cache=False,
+            use_legacy_sql=False,
+            labels=self._labels(kind, step),
+        )
+        job = self.client.query(sql, job_config=job_config, project=self.cfg.project, location=self.cfg.location)
+        try:
+            job.result()
+        finally:
+            children = sorted(self.client.list_jobs(parent_job=job.job_id), key=lambda j: (j.created, j.job_id))
+            self.last_script_statements = [self._statement_stat(c, job.job_id) for c in children]
+        return self.last_script_statements
+
+    @staticmethod
+    def _statement_stat(child: Any, parent_id: str) -> JobStat:
+        dest = getattr(child, "destination", None)
+        table = dest.table_id if dest is not None else None
+        statement = (getattr(child, "statement_type", None) or "statement").lower()
+        # temporary tables and query results live in anonymous datasets: name them by the temp table, or not at all
+        step = table if table and not table.startswith("anon") else "-"
+        seconds = (child.ended - child.started).total_seconds() if child.ended and child.started else None
+        return JobStat(
+            step=step,
+            kind=statement,
+            bytes_processed=getattr(child, "total_bytes_processed", None),
+            bytes_billed=getattr(child, "total_bytes_billed", None),
+            slot_ms=getattr(child, "slot_millis", None),
+            seconds=seconds,
+            job_id=child.job_id,
+            parent_job_id=parent_id,
+        )
+
+    def partition_ids(self, dataset: str, table: str) -> tuple[set[str], JobStat]:
+        """The non-empty partitions of a table (INFORMATION_SCHEMA.PARTITIONS: metadata, the 10 MB minimum), and the
+        query's cost record."""
+        rows, stat = self.query(
+            "partitions",
+            "metadata",
+            f"SELECT partition_id FROM `{self.cfg.project}.{dataset}.INFORMATION_SCHEMA.PARTITIONS` "
+            f"WHERE table_name = '{table}' AND total_rows > 0",
+        )
+        return {r["partition_id"] for r in rows}, stat
+
+    def table_metadata(self, project: str, dataset: str, prefix: str) -> tuple[dict[str, tuple[Any, int]], JobStat]:
+        """Each table whose name starts with `prefix`: (last modified time, row count), from the dataset's __TABLES__
+        (metadata, 0 bytes billed); and the query's cost record."""
+        if not re.fullmatch(r"[A-Za-z0-9_]*", prefix):
+            raise ValueError(f"table prefix {prefix!r}: letters, digits and _ only")
+        rows, stat = self.query(
+            "export_tables",
+            "metadata",
+            f"SELECT table_id, TIMESTAMP_MILLIS(last_modified_time) AS last_modified_time, row_count "
+            f"FROM `{project}.{dataset}.__TABLES__` WHERE STARTS_WITH(table_id, '{prefix}')",
+        )
+        return {r["table_id"]: (r["last_modified_time"], int(r["row_count"] or 0)) for r in rows}, stat
+
+    def read_rows(self, table_id: str) -> list[dict[str, Any]]:
+        """Every row of a (small) table, through the table-data API: no query, nothing billed."""
+        return [dict(r.items()) for r in self.client.list_rows(table_id)]
+
+    def table_exists(self, table_id: str) -> bool:
+        try:
+            self.client.get_table(table_id)
+            return True
+        except NotFound:
+            return False
 
     # -- tables -----------------------------------------------------------------------
 

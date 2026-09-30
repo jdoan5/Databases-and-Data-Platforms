@@ -24,6 +24,7 @@ class JobStat:
     rows: int | None = None  # rows in the built table, or rows a check/report returned
     job_id: str | None = None
     dry_run: bool = False
+    parent_job_id: str | None = None  # a statement of a script (make build-incremental): the script's job id
 
 
 def human_bytes(n: int | None) -> str:

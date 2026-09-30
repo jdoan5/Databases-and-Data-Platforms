@@ -24,20 +24,37 @@
 
 CREATE OR REPLACE TABLE `{{ project }}.{{ staging }}.int_identity`
 AS
-WITH devices AS (
+WITH days AS (
+  -- int_device_days is stg_events grouped by device and day; adding its rows up per device gives the same
+  -- aggregates as grouping the events (Stage 4: the daily build redoes a day there and recomputes only the devices
+  -- it touched, instead of scanning every event again)
   SELECT
     source,
     user_pseudo_id,
-    -- ARRAY_AGG over nothing but NULLs is NULL, not [], so a never-signed-in device needs the IFNULL.
-    IFNULL(ARRAY_AGG(DISTINCT user_id IGNORE NULLS ORDER BY user_id), []) AS user_ids,
-    MIN(event_timestamp) AS first_seen_at,
-    MIN(IF(user_id IS NOT NULL, event_timestamp, NULL)) AS first_signed_in_at,
-    MAX(event_timestamp) AS last_seen_at,
-    COUNT(*) AS events,
-    COUNT(DISTINCT session_key) AS sessions
-  FROM `{{ project }}.{{ staging }}.stg_events`
-  WHERE user_pseudo_id IS NOT NULL
+    ARRAY_CONCAT_AGG(user_ids) AS all_user_ids,
+    MIN(first_seen_at) AS first_seen_at,
+    MIN(first_signed_in_at) AS first_signed_in_at,
+    MAX(last_seen_at) AS last_seen_at,
+    SUM(events) AS events,
+    ARRAY_CONCAT_AGG(ga_session_ids) AS all_ga_session_ids
+  FROM `{{ project }}.{{ staging }}.int_device_days`
+  -- make build-incremental narrows this to the devices it recomputes (tagline_pipeline/incremental.py); empty otherwise
+  {{ incremental_filter }}
   GROUP BY source, user_pseudo_id
+),
+
+devices AS (
+  SELECT
+    source,
+    user_pseudo_id,
+    ARRAY(SELECT DISTINCT u FROM UNNEST(all_user_ids) AS u ORDER BY u) AS user_ids,
+    first_seen_at,
+    first_signed_in_at,
+    last_seen_at,
+    events,
+    -- the device's distinct sessions: within one device, session_key differs exactly when ga_session_id does
+    (SELECT COUNT(DISTINCT s) FROM UNNEST(all_ga_session_ids) AS s) AS sessions
+  FROM days
 ),
 
 resolved AS (

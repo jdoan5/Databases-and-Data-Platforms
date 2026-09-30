@@ -22,10 +22,15 @@ PYTHON ?= $(shell for p in python3.14 python3.13 python3.12 python3; do \
 COSTS_JSON ?=
 COSTS_ARG  := $(if $(COSTS_JSON),--costs-json $(abspath $(COSTS_JSON)),)
 
+# make build-incremental SINCE=20210131 reprocesses every source from that day on; LOOKBACK=4 (the default) is how many
+# of the site's days, up to its newest daily table, are re-read
+SINCE    ?=
+LOOKBACK ?=
+
 # make simulate SIM_ARGS="--people 10 --pace 0.3"
 SIM_ARGS ?=
 
-.PHONY: help setup venv site test test-site test-pipeline test-simulator reference build build-dry check \
+.PHONY: help setup venv site test test-site test-pipeline test-simulator reference build build-incremental build-dry check attribution-checks \
         numbers fixture simulate simulate-plan simulate-live simulate-e2e
 
 help:
@@ -59,11 +64,17 @@ reference: ## load products (synthetic unit_cost) and SYNTHETIC campaign_costs i
 build: ## build every model in order, then run the data checks (fails if any check fails)
 	$(CLI) build $(COSTS_ARG)
 
+build-incremental: ## the daily path: only new or changed export days, one script, then the checks (SINCE=YYYYMMDD, LOOKBACK=4)
+	$(CLI) build --incremental $(if $(SINCE),--since $(SINCE),) $(if $(LOOKBACK),--lookback $(LOOKBACK),) $(COSTS_ARG)
+
 build-dry: ## dry-run the models: bytes each would scan; creates nothing; needs a previous build
 	$(CLI) build --dry-run
 
 check: ## run the data checks against the built tables
 	$(CLI) check $(COSTS_ARG)
+
+attribution-checks: ## run the DAG's three attribution checks (airflow/dags/tagline_airflow/sql/attribution_checks) without Airflow
+	$(CLI) check --dir ../airflow/dags/tagline_airflow/sql/attribution_checks $(COSTS_ARG)
 
 numbers: ## print the reconciled numbers (events, sessions, orders, revenue, identity, cost)
 	$(CLI) numbers
@@ -166,3 +177,64 @@ spark-report: ## channel credit by model (all orders, complete-lookback orders),
 spark-cancel: ## cancel a batch: make spark-cancel BATCH=<id>
 	@test -n "$(BATCH)" || { echo "usage: make spark-cancel BATCH=<batch id>"; exit 2; }
 	cd $(SPARK_DIR) && $(SPARK_PY) -m tagline_spark.submit cancel $(BATCH)
+
+# --- Stage 4: the measurement harness (bench/) ---------------------------------------------
+
+# Runs with the Spark venv (BigQuery, Dataproc and Storage clients) and tagline/spark on PYTHONPATH (the batch
+# definition). Results: bench/results/<VARIANT>.jsonl. bench/README.md has the method.
+#   make bench-build VARIANT=baseline RUNS=3 FINGERPRINT=stage2-marts
+#   make bench-spark VARIANT=baseline RUNS=2 SPARK_PROPS="spark.executor.instances=2 spark.sql.shuffle.partitions=8"
+#   make bench-spark VARIANT=s4-e6-x JOB_ARGS="spark-master=local[4]"   (job arguments: --spark-master=local[4])
+BENCH       := cd bench && PYTHONPATH=../$(SPARK_DIR):../$(PIPELINE):. ../$(SPARK_DIR)/$(SPARK_PY) -m tagline_bench
+VARIANT     ?=
+RUNS        ?=
+NOTE        ?=
+FINGERPRINT ?= none
+BUILD_CMD   ?= make build
+SPARK_PROPS ?=
+JOB_ARGS    ?=
+TABLES      ?=
+BENCH_ARGS  ?=
+_bench_req   = @test -n "$(VARIANT)" || { echo "set VARIANT=<name> (results go to bench/results/<name>.jsonl)"; exit 2; }
+_bench_note  = $(if $(NOTE),--note '$(NOTE)',)
+
+.PHONY: bench-test bench-build bench-spark bench-storage bench-fingerprint bench-snapshot bench-diff bench-report bench-prices stage4-equivalence
+
+bench-test: ## harness unit tests (no Google Cloud)
+	cd bench && PYTHONPATH=../$(SPARK_DIR):. ../$(SPARK_DIR)/$(SPARK_PY) -m pytest -q
+
+bench-build: ## LIVE: BUILD_CMD (default make build) RUNS times (default 3); every job's bytes, slot-ms, seconds -> bench/results
+	$(_bench_req)
+	$(BENCH) build --variant $(VARIANT) --runs $(or $(RUNS),3) --cmd '$(BUILD_CMD)' --fingerprint $(FINGERPRINT) $(_bench_note) $(BENCH_ARGS)
+
+bench-spark: ## LIVE: the attribution batch RUNS times (default 2), SPARK_PROPS overrides; wall, DCU-hours, compute/write
+	$(_bench_req)
+	$(BENCH) spark --variant $(VARIANT) --runs $(or $(RUNS),2) $(foreach p,$(SPARK_PROPS),--prop '$(p)') $(foreach a,$(JOB_ARGS),--job-arg '$(a)') --fingerprint $(FINGERPRINT) $(_bench_note) $(BENCH_ARGS)
+
+bench-storage: ## storage per table and dataset (TABLE_STORAGE) and the monthly cost under both billing models
+	$(_bench_req)
+	$(BENCH) storage --variant $(VARIANT) $(_bench_note) $(BENCH_ARGS)
+
+bench-fingerprint: ## row count + order-independent hashes of TABLES (default gate: the marts and the attribution tables)
+	$(_bench_req)
+	$(BENCH) fingerprint --variant $(VARIANT) --tables $(or $(TABLES),gate) $(_bench_note) $(BENCH_ARGS)
+
+bench-snapshot: ## copy the built tables into tagline_s4_baseline (US; copies expire after 14 days)
+	$(_bench_req)
+	$(BENCH) snapshot --variant $(VARIANT) --tables $(or $(TABLES),all) $(_bench_note) $(BENCH_ARGS)
+
+bench-diff: ## the correctness gate: EXCEPT DISTINCT both ways against tagline_s4_baseline (fails on any difference)
+	$(_bench_req)
+	$(BENCH) diff --variant $(VARIANT) --tables $(or $(TABLES),gate) $(_bench_note) $(BENCH_ARGS)
+
+bench-report: ## Markdown medians and ranges from bench/results (VARIANT=... to narrow it)
+	$(BENCH) report $(foreach v,$(VARIANT),--variant $(v)) $(BENCH_ARGS)
+
+bench-prices: ## the list prices the harness uses, with the date they were read
+	$(BENCH) prices
+
+# make stage4-equivalence EQ_ARGS="--scenario fixture" (one scenario) or EQ_ARGS="--sample-start 20210125" (cheaper)
+EQ_ARGS ?=
+
+stage4-equivalence: ## LIVE: incremental build vs full build (sample day, site day, fixture days) in throwaway datasets; ~45 GiB, ~$0.30
+	$(BENCH) equivalence $(EQ_ARGS)

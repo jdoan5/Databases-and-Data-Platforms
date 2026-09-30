@@ -101,6 +101,23 @@ def export_tables(day: date, prefix: str = "events_") -> tuple[str, str]:
     return f"{prefix}{suffix}", f"{prefix}intraday_{suffix}"
 
 
+def run_incremental(cfg: Config, client) -> list[dict[str, Any]]:
+    """The daily incremental build (`make build-incremental`), labelled orchestrator=airflow. Returns one cost
+    record per statement of its script, for run_summary. Raises WindowError, or SystemExit when a table is missing
+    (a full refresh has to build them first)."""
+    from dataclasses import asdict
+
+    from tagline_pipeline import pipeline
+    from tagline_pipeline.bq import BigQuery
+    from tagline_pipeline.costs import format_cost_table
+
+    bq = BigQuery(cfg, client=client, extra_labels={"orchestrator": "airflow"})
+    result = pipeline.build_incremental(cfg, bq)
+    if result.stats:
+        print(format_cost_table(result.stats))
+    return [asdict(s) for s in result.stats]
+
+
 def prepare_sources(cfg: Config, client) -> dict[str, list[str]] | None:
     """What `make build` does before the first model: create the three datasets if missing (and align
     their descriptions and labels), then list the site export's tables. Returns the XCom form."""

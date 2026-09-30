@@ -33,9 +33,10 @@
 -- @column creative_name: Promotion creative name.
 -- @column creative_slot: Promotion creative slot.
 
+-- Not clustered (Stage 4, experiment 4): nothing reads stg_items by event_name or item_id, and without the
+-- clustering its build took about half the slot-ms (50-53k against 94-168k over three builds each), same bytes.
 CREATE OR REPLACE TABLE `{{ project }}.{{ staging }}.stg_items`
 PARTITION BY event_date
-CLUSTER BY source, event_name, item_id
 AS
 SELECT
   e.source,
@@ -44,7 +45,9 @@ SELECT
   e.event_date,
   e.event_timestamp,
   e.event_name,
-  e.session_key,
+  -- stg_events.session_key, rebuilt from the 8-byte ga_session_id rather than read: the stored string is
+  -- 174 MiB of stg_events (Stage 4, experiment 2). Same expression as in 10_stg_events.sql.
+  IF(e.user_pseudo_id IS NULL OR e.ga_session_id IS NULL, NULL, CONCAT(e.source, ':', e.user_pseudo_id, ':', CAST(e.ga_session_id AS STRING))) AS session_key,
   e.user_pseudo_id,
   NULLIF(NULLIF(TRIM(i.item_id), ''), '(not set)') AS item_id,
   NULLIF(NULLIF(TRIM(i.item_name), ''), '(not set)') AS item_name,
@@ -69,3 +72,5 @@ SELECT
   NULLIF(NULLIF(TRIM(i.creative_slot), ''), '(not set)') AS creative_slot
 FROM `{{ project }}.{{ staging }}.stg_events` AS e
 CROSS JOIN UNNEST(e.items) AS i
+-- make build-incremental narrows this to the days it processes (tagline_pipeline/incremental.py); empty otherwise
+{{ incremental_filter }}

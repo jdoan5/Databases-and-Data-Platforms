@@ -32,6 +32,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 from airflow.providers.google.cloud.operators.dataproc import DataprocCreateBatchOperator
 
@@ -110,6 +111,7 @@ class TaglineQueryOperator(BigQueryInsertJobOperator):
         self.log.info(
             "%s %s: %s, maximumBytesBilled=%s", self.kind, self.step, Path(self.sql_path).name, f"{cfg.max_bytes_billed:,}"
         )
+        self.before_job(context, cfg, site)
 
         super().execute(context)  # submit, wait, raise on a job error
 
@@ -136,27 +138,43 @@ class TaglineQueryOperator(BigQueryInsertJobOperator):
         )
         return asdict(stat)
 
+    def before_job(self, context, cfg, site) -> None:  # noqa: ANN001
+        """Hook for subclasses: runs before the job is submitted."""
+
     def after_job(self, context, cfg, site, sql_text: str, job, stat: JobStat) -> None:  # noqa: ANN001
         """Hook for subclasses: runs after the job succeeded."""
 
 
 class Stage2ModelOperator(TaglineQueryOperator):
     """Build one Stage 2 model (CREATE OR REPLACE TABLE), then do what `make build` does after each model:
-    set the table and column descriptions from the model's header, and count the rows."""
+    set the table and column descriptions from the model's header, and count the rows. For stg_events, also what
+    `make build` does around it: take the site export's metadata before the job reads the export, and record it in
+    staged_export_days once the table is built (the daily incremental build compares the export with that record)."""
 
     def __init__(self, *, model: Model, **kwargs: Any) -> None:
         super().__init__(sql_path=str(model.path), step=model.name, kind="model", stage="2", **kwargs)
         self.model_name = model.name
         self.layer = model.layer
+        self._staged: dict | None = None
+
+    def _bigquery(self, cfg) -> BigQuery:  # noqa: ANN001
+        hook = BigQueryHook(gcp_conn_id=self.gcp_conn_id, location=cfg.location)
+        return BigQuery(cfg, client=hook.get_client(project_id=cfg.project, location=cfg.location), extra_labels={"orchestrator": "airflow"})
+
+    def before_job(self, context, cfg, site) -> None:  # noqa: ANN001
+        self._staged = pipeline.export_state(cfg, self._bigquery(cfg), site) if self.model_name == "stg_events" else None
 
     def after_job(self, context, cfg, site, sql_text, job, stat) -> None:  # noqa: ANN001
         dataset = cfg.staging_dataset if self.layer == "staging" else cfg.marts_dataset
         table_id = f"{cfg.project}.{dataset}.{self.model_name}"
-        bq = BigQuery(cfg, client=self.hook.get_client(project_id=cfg.project, location=cfg.location))
+        bq = BigQuery(cfg, client=self.hook.get_client(project_id=cfg.project, location=cfg.location), extra_labels={"orchestrator": "airflow"})
         # _sources_note is the "Sources in this build: ..." suffix `make build` appends to the description.
         bq.apply_docs(table_id, parse_doc(sql_text), suffix=pipeline._sources_note(cfg, site))
         stat.rows = bq.num_rows(table_id)
         self.log.info("built %s: %s rows", table_id, f"{stat.rows:,}")
+        if self._staged is not None:
+            pipeline.record_staged(cfg, bq, self._staged)
+            self.log.info("recorded %d site export day(s) in %s", len(self._staged), pipeline.staged_table_id(cfg))
 
 
 class NoRowsCheckOperator(TaglineQueryOperator):

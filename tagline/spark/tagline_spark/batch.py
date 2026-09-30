@@ -40,16 +40,34 @@ SUBNETWORK = "default"  # the default network's us-central1 subnet, with Private
 
 # The smallest shape Serverless accepts: a 4-core driver, two 4-core executors (the minimum), no scaling
 # beyond them (12 DCUs), and the minimum 250 GiB of disk (shuffle storage) per node instead of the default
-# 100 GiB per core. Stage 4 measures whether anything else is cheaper.
+# 100 GiB per core. The executor settings only matter if the job ever runs with executors: with SPARK_MASTER
+# below it runs in the driver alone (Stage 4, experiment 6).
 SPARK_PROPERTIES = {
     "spark.driver.cores": "4",
+    # The smallest driver memory Serverless accepts, 1 GiB per core in all (the API refuses less): the node drops
+    # from 24 GiB to about 5.75 GiB and the rate from 4.8 to about 2.98 DCUs (Stage 4, experiment 9). The job's
+    # data is a few MB; the default was 16000m plus PySpark's 40% overhead.
+    "spark.driver.memory": "2867m",
+    "spark.driver.memoryOverhead": "1229m",
     "spark.executor.cores": "4",
     "spark.executor.instances": "2",
     "spark.dynamicAllocation.maxExecutors": "2",
     "spark.dataproc.driver.disk.size": "250g",
     "spark.dataproc.executor.disk.size": "250g",
     "spark.sql.session.timeZone": "UTC",
+    # Dataproc's spark-defaults set 1000 shuffle partitions, and AQE does not coalesce the output of a cached plan,
+    # so the job's three cached DataFrames kept 1000 partitions and every count and check over them ran 1000 tasks
+    # for about 12 k touches. One partition per task thread, so as many as the driver's cores (Stage 4, experiment 7).
+    "spark.sql.shuffle.partitions": "4",
 }
+
+# Where the job runs its tasks, passed as --spark-master (the job sets it on its session builder). Runtime 3.0
+# starts this batch in Spark local mode with ONE task thread: Dataproc appends `spark.master=local` to the batch's
+# Spark config (after the image's `spark.master=dataproc`), whatever the executor properties say, and the Batch API
+# refuses spark.master as a property for anything but `local`. `local[N]` with N = the driver's cores keeps the
+# single node (no executor start-up, no executor nodes to pay for) and uses all of its cores. Stage 4 measured
+# `local` (the runtime's), `local[4]` and `dataproc` (executors); spark/README.md has the numbers.
+SPARK_MASTER = f"local[{SPARK_PROPERTIES['spark.driver.cores']}]"
 
 # Code in the bucket, one folder per version of the sources, so a batch always runs exactly the code its
 # version names and an upload never changes what an earlier batch ran.
@@ -128,6 +146,7 @@ def job_args(target: Target) -> list[str]:
         f"--marts-dataset={target.marts_dataset}",
         f"--temp-bucket={target.bucket}",
         f"--expected-spark-version={SPARK_VERSION}",
+        f"--spark-master={SPARK_MASTER}",
     ]
 
 

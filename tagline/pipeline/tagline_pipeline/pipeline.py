@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from google.api_core.exceptions import NotFound
 
+from . import incremental
 from .bq import BigQuery
 from .config import SAMPLE_TABLE, SQL_DIR, Config
 from .costs import JobStat
 from .sources import SiteTables, classify_site_tables, site_union_sql
-from .sqlfiles import list_models, list_sql, parse_doc, render
+from .sqlfiles import Model, list_models, list_sql, parse_doc, render
 
 
 def log(message: str) -> None:
@@ -45,6 +48,9 @@ def context(cfg: Config, site: SiteTables | None) -> dict[str, object]:
         "sample_start": cfg.sample_start,
         "sample_end": cfg.sample_end,
         "site_union": site_union_sql(cfg, site),
+        # Hooks the daily incremental build fills in (tagline_pipeline/incremental.py); a full build leaves them empty.
+        "incremental_filter": "",
+        "purchase_history": "",
     }
 
 
@@ -59,6 +65,30 @@ def _sources_note(cfg: Config, site: SiteTables | None) -> str:
 class BuildResult:
     stats: list[JobStat] = field(default_factory=list)
     site: SiteTables | None = None
+    window: incremental.Window | None = None  # set by build_incremental
+
+
+def staged_table_id(cfg: Config) -> str:
+    return f"{cfg.project}.{cfg.staging_dataset}.{incremental.STAGED_TABLE}"
+
+
+def export_state(cfg: Config, bq: BigQuery, site: SiteTables | None, stats: list[JobStat] | None = None) -> dict[str, incremental.ExportDay]:
+    """What a build is about to read from the site's export: per day, the table and its metadata now (__TABLES__,
+    0 bytes). Taken before the read, so a change during the read shows as a change next time."""
+    if site is None:
+        return {}
+    meta, stat = bq.table_metadata(cfg.site_project, cfg.ga4_dataset, cfg.ga4_table_prefix)
+    if stats is not None:
+        stats.append(stat)
+    return incremental.export_state(site, cfg.ga4_table_prefix, meta)
+
+
+def record_staged(cfg: Config, bq: BigQuery, state: dict[str, incremental.ExportDay], stats: list[JobStat] | None = None) -> None:
+    """A full build's record of what stg_events was built from: staged_export_days replaced (a DDL job that reads no
+    table). The daily build keeps it up to date inside its own transaction."""
+    _, stat = bq.query(incremental.STAGED_TABLE, "record", incremental.staged_table_sql(f"`{staged_table_id(cfg)}`", state.values()))
+    if stats is not None:
+        stats.append(stat)
 
 
 def build(
@@ -95,6 +125,8 @@ def build(
         models = [m for m in models if m.name == only]
     elif start_at is not None:
         models = models[names.index(start_at) :]
+    # what stg_events is about to read from the site's export, recorded once it has (the daily build compares with it)
+    staged = export_state(cfg, bq, result.site, result.stats) if not dry_run and any(m.name == "stg_events" for m in models) else None
     for model in models:
         dataset = cfg.staging_dataset if model.layer == "staging" else cfg.marts_dataset
         table_id = f"{cfg.project}.{dataset}.{model.name}"
@@ -115,6 +147,112 @@ def build(
         if not dry_run:
             bq.apply_docs(table_id, parse_doc(sql_text), suffix=_sources_note(cfg, result.site))
             stat.rows = bq.num_rows(table_id)
+            if model.name == "stg_events" and staged is not None:
+                record_staged(cfg, bq, staged, result.stats)
+    return result
+
+
+def loaded_days(
+    cfg: Config, bq: BigQuery, days_by_source: dict[str, list[str]], parts: Iterable[str], stats: list[JobStat] | None = None
+) -> dict[str, set[str]]:
+    """The export days stg_events already holds, per source: its non-empty date partitions (`parts`, from a metadata
+    query). A day that two sources both have an export table for cannot be told apart that way, so for those days
+    (none so far: the sample is 2020-21, the site 2026) the sources are read from the partitions themselves."""
+    parts = set(parts)
+    count: dict[str, int] = {}
+    for days in days_by_source.values():
+        for d in set(days):
+            count[d] = count.get(d, 0) + 1
+    shared = sorted(d for d, n in count.items() if n > 1 and d in parts)
+    exact: dict[str, set[str]] = {}
+    if shared:
+        dates = ", ".join(f"DATE '{d[:4]}-{d[4:6]}-{d[6:]}'" for d in shared)
+        rows, stat = bq.query(
+            "loaded_days",
+            "metadata",
+            f"SELECT DISTINCT source, FORMAT_DATE('%Y%m%d', event_date) AS day "
+            f"FROM `{cfg.project}.{cfg.staging_dataset}.stg_events` WHERE event_date IN ({dates})",
+        )
+        if stats is not None:
+            stats.append(stat)
+        for r in rows:
+            exact.setdefault(r["source"], set()).add(r["day"])
+    return {
+        source: {d for d in days if d in parts and count[d] == 1} | (exact.get(source, set()) & set(days))
+        for source, days in days_by_source.items()
+    }
+
+
+def build_incremental(
+    cfg: Config,
+    bq: BigQuery,
+    *,
+    since: str | None = None,
+    lookback: int = incremental.DEFAULT_LOOKBACK_DAYS,
+    stats: list[JobStat] | None = None,
+    print_script: bool = False,
+) -> BuildResult:
+    """The daily path (tagline_pipeline/incremental.py): work out the window of export days to (re)process and apply
+    it to every table in one BigQuery script, in one transaction. Needs every table from an earlier full build.
+    With print_script, print the script instead of running it."""
+    if lookback < 1:
+        raise incremental.WindowError("lookback must be at least 1 day")
+    created = bq.ensure_datasets()
+    if created:
+        raise SystemExit(f"dataset(s) {', '.join(created)} did not exist: run a full build first (make build)")
+    result = BuildResult(stats=stats if stats is not None else [], site=discover_site(cfg, bq))
+    models = {m.name: m for m in list_models(SQL_DIR)}
+
+    def table_id(m: Model) -> str:
+        return f"{cfg.project}.{cfg.staging_dataset if m.layer == 'staging' else cfg.marts_dataset}.{m.name}"
+
+    missing = [name for name, m in models.items() if not bq.table_exists(table_id(m))]
+    if missing:
+        raise SystemExit(f"table(s) {', '.join(missing)} do not exist yet: run a full build first (make build)")
+    days = incremental.export_days(cfg, result.site)
+    parts, stat = bq.partition_ids(cfg.staging_dataset, "stg_events")
+    result.stats.append(stat)
+    loaded = loaded_days(cfg, bq, days, parts, result.stats)
+    # what this run is about to read, and what was read when each loaded day was staged
+    current = export_state(cfg, bq, result.site, result.stats)
+    has_record = bq.table_exists(staged_table_id(cfg))
+    recorded = incremental.recorded_state(bq.read_rows(staged_table_id(cfg))) if has_record else {}
+    if not has_record and loaded.get(incremental.SITE):
+        log(f"no {incremental.STAGED_TABLE} yet (tables built before it existed): every loaded site day is read again, once")
+    changed = incremental.changed_days(current, recorded, loaded.get(incremental.SITE, set()))
+    window = incremental.plan_window(
+        days,
+        loaded,
+        since=since,
+        lookback=lookback,
+        changed_by_source={incremental.SITE: changed},
+        anchor_by_source=incremental.lookback_anchors(result.site),
+    )
+    result.window = window
+    log(f"incremental window: {window.describe()}")
+    for note in window.notes:
+        log(f"  {note}")
+    gone = incremental.vanished_days(current, recorded)
+    if gone:
+        log(f"  tagline_site: {len(gone)} staged day(s) no longer have an export table ({', '.join(gone)}); their rows stay "
+            "unless the window starts on or before them (a full build drops them)")
+    if window.empty:
+        return result
+    site_window = window.get(incremental.SITE)
+    staged = {d: current[d] for d in site_window.days if d in current} if site_window is not None else None
+    sql = incremental.script(cfg, models, context(cfg, result.site), result.site, window, staged)
+    if print_script:
+        print(sql)
+        return result
+    if not has_record:
+        record_staged(cfg, bq, {}, result.stats)  # empty: the script fills in the window's days
+    try:
+        bq.script("incremental", "incremental", sql)
+    finally:
+        result.stats.extend(bq.last_script_statements)
+    note = _sources_note(cfg, result.site)
+    for m in models.values():
+        bq.apply_docs(table_id(m), parse_doc(m.sql()), suffix=note)
     return result
 
 
@@ -126,13 +264,21 @@ class CheckResult:
 
 
 def run_checks(
-    cfg: Config, bq: BigQuery, site: SiteTables | None = None, stats: list[JobStat] | None = None
+    cfg: Config,
+    bq: BigQuery,
+    site: SiteTables | None = None,
+    stats: list[JobStat] | None = None,
+    directory: Path | None = None,
 ) -> tuple[list[CheckResult], list[JobStat]]:
-    """Each check is a query that returns no rows when the check passes. Jobs are appended to `stats` if given."""
+    """Each check is a query that returns no rows when the check passes. Jobs are appended to `stats` if given.
+    `directory` runs another directory of checks written the same way (the DAG's attribution checks)."""
     ctx = context(cfg, site)
     results: list[CheckResult] = []
     stats = stats if stats is not None else []
-    for path in list_sql(SQL_DIR / "checks"):
+    files = list_sql(directory if directory is not None else SQL_DIR / "checks")
+    if not files:
+        raise SystemExit(f"no .sql checks in {directory}")
+    for path in files:
         text = path.read_text(encoding="utf-8")
         rows, stat = bq.query(path.stem, "check", render(text, ctx))
         results.append(CheckResult(path.stem, parse_doc(text).check, [dict(r.items()) for r in rows]))

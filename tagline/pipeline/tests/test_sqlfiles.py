@@ -39,10 +39,10 @@ def test_bad_column_line_is_an_error():
 def test_models_are_in_build_order_and_layers():
     names = [m.name for m in list_models(SQL_DIR)]
     assert names == [
-        "stg_events", "stg_items", "int_identity", "fct_sessions",
+        "stg_events", "stg_items", "int_purchases", "int_device_days", "int_identity", "fct_sessions",
         "fct_orders", "fct_order_items", "mart_campaign_daily", "mart_funnel_daily",
     ]
-    assert [m.layer for m in list_models(SQL_DIR)] == ["staging"] * 3 + ["marts"] * 5
+    assert [m.layer for m in list_models(SQL_DIR)] == ["staging"] * 5 + ["marts"] * 5
     with pytest.raises(TemplateError):
         Model(SQL_DIR / "models" / "99_other.sql").layer
 
@@ -114,3 +114,23 @@ def test_every_scan_of_a_wildcard_table_is_filtered_by_suffix(prefix):
         assert unfiltered_wildcards(sql) == [], f"{path.name}: wildcard table without a _TABLE_SUFFIX filter"
     assert seen >= 4  # the sample in stg_events and check 05, and the site's daily and intraday blocks
     assert SAMPLE_TABLE.endswith("events_*")
+
+
+_SESSION_KEY_CONCAT = re.compile(
+    r"CONCAT\((?:\w+\.)?source, ':', (?:\w+\.)?user_pseudo_id, ':', CAST\((?:\w+\.)?ga_session_id AS STRING\)\)"
+)
+
+
+def test_session_key_is_built_the_same_way_everywhere():
+    """stg_events defines session_key; stg_items, int_purchases and fct_sessions rebuild it from its parts instead of
+    reading the stored string (Stage 4, experiment 2). All four must spell it the same way, or the keys the facts
+    join on would stop matching stg_events."""
+    models = {m.name: re.sub(r"--[^\n]*", "", m.sql()) for m in list_models(SQL_DIR)}
+    for name in ("stg_events", "stg_items", "int_purchases", "fct_sessions"):
+        flat = re.sub(r"\s+", " ", models[name])
+        assert _SESSION_KEY_CONCAT.search(flat), f"{name}: session_key is not built as source:user_pseudo_id:ga_session_id"
+    # the tables that rebuild it never read the stored column from stg_events (fct_orders reads int_purchases)
+    assert "e.session_key" not in models["stg_items"]
+    assert "stg_events" not in models["fct_orders"]
+    assert not re.search(r"\bsession_key\b", models["int_identity"])
+    assert "PARTITION BY session_key" not in models["fct_sessions"] and "WHERE session_key IS NOT NULL" not in models["fct_sessions"]

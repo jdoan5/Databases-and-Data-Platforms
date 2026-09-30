@@ -1,5 +1,11 @@
 # Orchestration: Tagline Stage 3
 
+> **Status, 2026-09-29 (Stage 4).** With every Stage 4 change in, the DAG ran end to end twice, both
+> green: a normal daily run at 05:48 UTC (the incremental build of the site's newest export days, the
+> nine checks, the attribution batch in `local[4]` and its three checks) in **249 s and about $0.019**,
+> and a full-refresh run at 05:56 UTC (`{"full_refresh": true}`: all ten models rebuilt) in **278 s and
+> about $0.056** ([measured below](#measured)). Stage 3's run was 480 s and $0.081.
+>
 > **Status, 2026-09-28.** The whole DAG ran end to end on the committed Dataproc runtime, **3.0**, at
 > 14:17 UTC: Stage 2 models and checks, the attribution batch on Dataproc Serverless, the three checks
 > on its output and the summary, all green, in 487 s and about $0.081 ([measured below](#measured)).
@@ -11,7 +17,8 @@
 > 480 s and about $0.081 ([measured below](#measured)).
 
 One DAG, `tagline_daily`, runs the whole pipeline once a day: wait for the site's GA4 export (only
-when one is configured), rebuild the Stage 2 BigQuery models in lineage order, run the Stage 2 data
+when one is configured), bring the Stage 2 BigQuery tables up to date (by default the daily incremental
+build, Stage 4; with `{"full_refresh": true}` every model rebuilt in lineage order), run the Stage 2 data
 checks, run the Stage 3 multi-touch attribution job on Dataproc Serverless, and check the Spark
 output against Stage 2. Airflow 3 runs locally in Docker; the DAG uses the Google provider's
 operators, so it would run on Cloud Composer with the changes listed [below](#what-would-change-on-cloud-composer).
@@ -21,16 +28,20 @@ operators, so it would run on Cloud Composer with the changes listed [below](#wh
 ## The DAG
 
 ```
-check_ga4_export ─┬─► wait_for_ga4_export ─┬─► prepare_sources
+check_ga4_export ─┬─► wait_for_ga4_export ─┬─► prepare_sources ─► build_mode
                   └─► no_ga4_export ───────┘
-prepare_sources ─► stg_events ─┬─► stg_items ──────────────────────────────────┐
-                               └─► int_identity ─► fct_sessions ─► fct_orders ─┴─► fct_order_items ──┐
-                                                   fct_sessions ─► mart_campaign_daily ──────────────┤
-                                                   fct_sessions ─► mart_funnel_daily ────────────────┴─► stage2_checks (9)
+build_mode ─┬─► stage2_incremental ─────────────────────────────────────────────────────────────────┐   (the default)
+            └─► stg_events ─┬─► stg_items ─────────────────────────────────────┐                     │   (full_refresh)
+                            ├─► int_purchases ──────────────────► fct_orders ──┴─► fct_order_items ──┤
+                            └─► int_device_days ─► int_identity ─► fct_sessions ─► fct_orders         │
+                                                                   fct_sessions ─► mart_campaign_daily┤
+                                                                   fct_sessions ─► mart_funnel_daily ─┴─► stage2_checks (9)
 stage2_checks ─► attribution_enabled ─► spark_attribution ─► attribution_checks (3) ─► run_summary
 ```
 
-`stg_events` also feeds `fct_sessions` and `fct_orders`, and `int_identity` feeds `fct_orders`. The
+`build_mode` picks one branch and Airflow skips the other: `stage2_incremental` (the default) or the model
+tasks (`{"full_refresh": true}`); the checks run after whichever ran. On the full-refresh branch
+`stg_events` also feeds `fct_sessions`, and `int_identity` feeds `fct_orders`. The
 model edges are not a hand-kept list: the DAG reads each model's SQL and wires one task to another
 when it reads that model's table (`{{ staging }}.stg_events`), and refuses a model that reads one
 that builds after it. The DagBag test compares the result with the lineage in
@@ -41,8 +52,10 @@ that builds after it. The DagBag test compares the result with the lineage in
 | `check_ga4_export` | branch: the sensor when `TAGLINE_GA4_DATASET` is set, else `no_ga4_export` | |
 | `wait_for_ga4_export` | waits for the day's `events_YYYYMMDD` **or** `events_intraday_YYYYMMDD` table (two free metadata calls per poke) | reschedule mode (no worker slot held), poke every 15 min, **gives up after 8 h as skipped** (soft fail), so the build still runs on the days that did arrive |
 | `prepare_sources` | what `make build` does first: create the three datasets if missing, list the site export's tables | runs when the sensor succeeded **or** was skipped (`none_failed`) |
-| 8 model tasks | one `CREATE OR REPLACE TABLE` each, rendered by the Stage 2 package, then the table and column descriptions and the row count, as `make build` does | `maximumBytesBilled` on every job |
-| `stage2_checks` (9) | Stage 2's checks, in parallel; each returns no rows when it passes | a failing check fails its task **without retrying** (the same query on the same tables cannot pass) |
+| `build_mode` | branch on the run parameter `full_refresh` (default false) | |
+| `stage2_incremental` | the default: `make build-incremental`'s one BigQuery script, in one transaction: the export days that are new or may have changed (the 4 days up to the site's newest daily table, any day whose export table no longer matches what was recorded in `staged_export_days` when it was staged, and any day not loaded yet) applied to every table and to that record ([data-model.md](data-model.md#incremental-builds-stage-4)) | `maximumBytesBilled` on every statement; a failure leaves every table as it was, so a retry starts from the same tables; with no tables yet it fails at once, without retrying: run with `{"full_refresh": true}` |
+| 10 model tasks | with `full_refresh`: one `CREATE OR REPLACE TABLE` each, rendered by the Stage 2 package, then the table and column descriptions and the row count, as `make build` does; `stg_events` also takes the site export's metadata before its job and replaces `staged_export_days` after it | `maximumBytesBilled` on every job |
+| `stage2_checks` (9) | Stage 2's checks, in parallel, after whichever build ran (`none_failed_min_one_success`); each returns no rows when it passes | a failing check fails its task **without retrying** (the same query on the same tables cannot pass) |
 | `attribution_enabled` | short-circuit on the run parameter `attribution` (default true) | `{"attribution": false}` rebuilds and checks Stage 2 only |
 | `spark_attribution` | `AttributionBatchOperator` (the provider's `DataprocCreateBatchOperator`, plus a cancel, below): the attribution job on Dataproc Serverless. The batch is `tagline/spark/tagline_spark/batch.py`, the one definition `make spark-submit` uses too; it runs the code version hashed from the mounted `spark/` sources, so `make spark-upload` must have put that version in the bucket | batch TTL 30 min; task timeout 45 min; a try that ends before its batch does (timeout, any error while waiting, Ctrl-C) cancels the batch; one retry, as a new batch |
 | `attribution_checks` (3) | weights sum to 1 per order and model (and every order has all six models); attributed orders and revenue per model = Stage 2's real orders; every order's `last_click` credit is on its own session (`fct_orders.session_key`), and `last_click` orders and revenue by channel = Stage 2's, with no adjustment | `maximumBytesBilled`; fail without retry |
@@ -96,6 +109,7 @@ make airflow-check     # DagBag import test in the Airflow image (no Google Clou
 make spark-upload      # the job's code for the current sources, if not in the bucket yet (spark-submit does it too)
 make airflow-test      # LIVE: airflow dags test tagline_daily <today, UTC> end to end (BigQuery + Dataproc)
 make airflow-test AIRFLOW_DATE=2026-09-28 AIRFLOW_CONF='{"attribution": false}'   # Stage 2 part only
+make airflow-test AIRFLOW_CONF='{"full_refresh": true}'                            # rebuild every table from every day
 make airflow-down      # stop everything; the metadata database volume is kept
 make airflow-orphans   # after a crash: Dataproc batches the DAG left running (CANCEL=1 cancels them)
 ```
@@ -135,7 +149,8 @@ make airflow-orphans   # after a crash: Dataproc batches the DAG left running (C
   way (the UI toggle, `airflow dags unpause`, or the trigger form's "Unpause on trigger" box) makes
   the scheduler create the run for the most recent 10:00 UTC straight away (Airflow 3 with
   `catchup=False` runs the latest interval that has passed) with the default `attribution: true`:
-  a full Stage 2 rebuild (8.62 GiB, about $0.05) and a Spark batch. Triggering
+  the daily incremental build (about 2.2 GiB, $0.014; a full rebuild with `full_refresh`) and a Spark
+  batch (about $0.005). Triggering
   `{"attribution": false}` does not avoid that. A run triggered while the DAG is paused is queued
   and does not start, and once the DAG is unpaused the scheduled run is created as well, since a
   manual run does not stand in for it; the two then run one after the other. To rebuild and check
@@ -169,13 +184,17 @@ which runs independent tasks (`stg_items` and `int_identity`, the nine checks) s
   BigQuery with `maximum_bytes_billed = 10000000000` and those labels.
 - **Dataproc**: the batch (runtime 3.0, Spark 4.0.2) has a 30-minute TTL (Dataproc stops it whatever
   Airflow does; it fired on the first manual run, see `spark/README.md`), the smallest shape
-  Serverless accepts (a 4-core driver, two 4-core executors, no scale-out, 250 GiB disks), and labels
+  Serverless accepts (since Stage 4 the job runs in a 4-core driver alone, `--spark-master=local[4]`
+  with 4 shuffle partitions and the minimum 4 GiB of driver memory, about 3 DCUs; the two 4-core
+  executors `batch.py` still describes are never started; 250 GiB disks), and labels
   `app=tagline, stage=3, job=attribution, orchestrator=airflow, code=<version>`; the operator adds
   `airflow-dag-id=tagline-daily` and `airflow-task-id=spark-attribution` (it lowercases ids and turns
   `_` into `-`). The DagBag test asserts the DAG's batch equals `make spark-submit`'s apart from the
   `orchestrator` label. The job itself runs no query jobs: it reads through the BigQuery Storage Read
   API and writes with two load jobs (free), and checks its own output before writing anything.
-- **Retries are safe to repeat.** Models are `CREATE OR REPLACE`, so a retry rebuilds the same table.
+- **Retries are safe to repeat.** Models are `CREATE OR REPLACE`, so a retry rebuilds the same table; the
+  incremental script is one transaction that replaces what it writes, so a failed try changes nothing and a
+  retry starts from the same tables.
   BigQuery tasks set `durable=False`: Airflow 3.3's resumable operators would otherwise reuse a
   previous try's finished job on retry (and, unless the state store is cleared on success, even
   after the task is cleared by hand), which would make a re-run check re-read old results.
@@ -210,9 +229,9 @@ which runs independent tasks (`stg_items` and `int_identity`, the nine checks) s
   container killed or out of memory, Docker Desktop quit mid-run) cancels nothing: the batch runs on
   until it finishes or reaches its 30-minute TTL (counted from RUNNING: the one TTL stop so far came
   1,807 s after RUNNING, 1,918 s after creation), and when Airflow comes back the task's retry starts
-  a second batch beside it. The TTL caps the waste at one extra batch: about $0.03 for a normal run,
-  and up to about $0.36 for one that runs its full 30 minutes at the 12-DCU shape (the TTL-stopped
-  batch, below, ran in local mode and cost $0.15). After such a crash, or if a cancel was logged as
+  a second batch beside it. The TTL caps the waste at one extra batch: about $0.005 for a normal run
+  since Stage 4, and up to about $0.10 for one that runs its full 30 minutes at the driver's 3 DCUs
+  (the TTL-stopped batch, below, ran at Stage 3's 4.8 DCUs and cost $0.15). After such a crash, or if a cancel was logged as
   failed, run `make airflow-orphans` before `make airflow-up`: it lists the batches `tagline_daily`
   started (labels `app=tagline` and the provider's `airflow-dag-id=tagline-daily`) that are still
   pending or running, and
@@ -235,14 +254,70 @@ which runs independent tasks (`stg_items` and `int_identity`, the nine checks) s
 
 ## Measured
 
-All on 2026-09-28: the GA4 sample only, then (first below) with the site's own export. Prices are
-Google's list prices, read that day:
+Stage 4's two runs first (2026-09-29), then Stage 3's (2026-09-28: the GA4 sample only, then with the
+site's own export). Prices are Google's list prices, read on 2026-09-28:
 BigQuery on demand $6.25 per TiB billed (US multi-region); Serverless for Apache Spark standard tier in
 `us-central1`, $0.06 per DCU-hour and $0.04 per GB-month of shuffle storage ($0.000054795 per
 GB-hour), billed per second with a 1-minute minimum
 ([pricing](https://cloud.google.com/dataproc-serverless/pricing)).
 
-**Full DAG run with the site's export** (`make airflow-test AIRFLOW_DATE=2026-09-28`, run
+**Stage 4, a normal daily run** (`make airflow-test AIRFLOW_DATE=2026-09-28`, run
+`manual__2026-09-29T05:48:47.057276+00:00`, code version `37f5b3bf52ba`, every Stage 4 change in): the
+sensor found `events_20260927` on its first poke, `build_mode` took `stage2_incremental` and skipped the
+ten model tasks, and every other task succeeded, the nine Stage 2 checks and the three attribution checks
+included. The incremental window was the site's day (the rule then re-read the site's newest 3 export days; the
+current one, the 4 days up to the newest daily table plus any day whose export changed since it was staged,
+gives the same one-day window, [confirmed below](#after-the-review); the sample is static and fully loaded). **249 s** from the first task's start to the last task's end, and about **$0.019**:
+
+| part | tasks | wall | what it used | list price |
+|---|---|---|---|---|
+| branch, sensor, `prepare_sources`, `build_mode` | 5 (1 skipped) | 2.9 s | the sensor's poke 0.7 s; the window's metadata query (10 MiB) | $0.0001 |
+| `stage2_incremental` | 1 (10 skipped) | 66.2 s | one script, 27 statements in one transaction: 627 MiB billed, 282,230 slot-ms, 56.5 s of job time | $0.0037 |
+| Stage 2 checks | 9 | 19.5 s | 9 query jobs, 1,547 MiB | $0.0092 |
+| `attribution_enabled`, `spark_attribution` | 2 | 154.4 s | batch `tagline-attr-20260929-df0db414-t1-9b6f71`: 145 s (44 s pending, 101 s running), 0.0826 DCU-hours at 2.9 DCUs, `local[4]`; compute 29.7 s, summary and writes 30.1 s; loads 2.2 s and 2.3 s | $0.0054 |
+| attribution checks | 3 | 5.9 s | 3 query jobs, 80 MiB | $0.0005 |
+| `run_summary` | 1 | 0.1 s | the cost table, now with the script's statements | |
+| **total** | **31 (11 skipped)** | **249 s** | **14 query jobs, 2.211 GiB billed; 0.083 DCU-hours** | **$0.0189** |
+
+**Stage 4, a full-refresh run** (`make airflow-test AIRFLOW_DATE=2026-09-28 AIRFLOW_CONF='{"full_refresh":
+true}'`, run `manual__2026-09-29T05:56:05.916235+00:00`): `build_mode` took the model tasks and skipped
+`stage2_incremental`; 29 tasks succeeded (all checks passing), 2 were skipped (`no_ga4_export` and
+`stage2_incremental`). (The run's own summary says 28: `run_summary` counts the others before it finishes.) **278 s** and about **$0.056**:
+
+| part | tasks | wall | what it used | list price |
+|---|---|---|---|---|
+| branch, sensor, `prepare_sources`, `build_mode` | 5 (1 skipped) | 3.0 s | the sensor's poke 0.6 s | |
+| model tasks, `stage2_incremental` | 11 (1 skipped: `stage2_incremental`) | 63.9 s | 10 query jobs, 6.54 GiB billed, 46.7 s of job time | $0.0399 |
+| Stage 2 checks | 9 | 19.7 s | 9 query jobs, 1,549 MiB | $0.0092 |
+| `attribution_enabled`, `spark_attribution` | 2 | 185.0 s | batch `tagline-attr-20260929-61124d24-t1-71ff1c`: 183 s (57 s pending, 126 s running), 0.1036 DCU-hours; compute 53.6 s (27 to 32 s in the other five final batches), summary and writes 29.8 s | $0.0068 |
+| attribution checks | 3 | 6.1 s | 3 query jobs, 80 MiB | $0.0005 |
+| `run_summary` | 1 | 0.1 s | | |
+| **total** | **31 (2 skipped)** | **278 s** | **22 query jobs, 8.131 GiB billed; 0.104 DCU-hours** | **$0.0564** |
+
+Both runs' BigQuery jobs agree with `region-us.INFORMATION_SCHEMA.JOBS_BY_PROJECT` (jobs labelled
+`orchestrator=airflow` in each run's window, recorded as `bench/results/s4-end-dag-daily.jsonl` and
+`s4-end-dag-full.jsonl` with each batch). Both batches wrote tables with the fingerprints of every other final
+batch, and the final tables match the Stage 3 baseline except for the two documented last-bit sums
+([STAGE4-RESULTS.md](../STAGE4-RESULTS.md#what-differs-from-the-baseline)). Against Stage 3's run below: 249 s
+against 480 s, 2.21 GiB against 8.70, 0.083 DCU-hours against 0.436, $0.019 against $0.081. The Spark task is
+still most of a run (62% of the daily run). `airflow dags test` runs one task at a time, so the nine checks run
+in sequence here; a scheduled run would run them side by side.
+
+#### After the review
+
+**Stage 4, a normal daily run on the final code** (`make airflow-test AIRFLOW_DATE=2026-09-28`, run
+`manual__2026-09-30T03:21:58.735653+00:00`, the same code version `37f5b3bf52ba`; `bench/results/s4-fix-dag-daily.jsonl`),
+after the review's fix to the daily window (the export compared with `staged_export_days`, the record of what was
+staged; [data-model.md](data-model.md#incremental-builds-stage-4)). A full rebuild had recorded the site's one day
+minutes before, so the window was that day, by the lookback: nothing had changed. The sensor found
+`events_20260927`, `stage2_incremental` ran, 20 tasks succeeded (`run_summary` included; its own count says 19)
+and 11 were skipped, every check passing. **274 s** and about **$0.019**: `stage2_incremental` 84.7 s (28
+statements, 637 MiB, the record's MERGE among them), its two metadata queries 10 MiB, the checks 1,549 MiB, the
+batch 151 s (0.0836 DCU-hours, $0.0055), the attribution checks 80 MiB; 15 query jobs, 2.223 GiB billed ($0.0136).
+The equivalence test was running in other datasets at the same time, which may explain the incremental task's
+84.7 s against 66.2 s before; no timing claim rests on this run.
+
+**Stage 3, full DAG run with the site's export** (`make airflow-test AIRFLOW_DATE=2026-09-28`, run
 `manual__2026-09-28T15:01:41.185176+00:00`, code version `230e52e7cb36`, `TAGLINE_GA4_DATASET` set):
 the branch took the sensor, which found `events_20260927` on its first poke, and `no_ga4_export` was
 skipped; 26 tasks succeeded, all nine Stage 2 checks and all three attribution checks passed, and
@@ -269,7 +344,7 @@ same Spark job run by `make spark-submit` just before the DAG run (batch `…-be
 export in Stage 2 as here) took 444 s (56 s pending, 388 s running), 0.5190 DCU-hours, $0.033; compute
 201.5 s, write 135.7 s.
 
-**Full DAG run on runtime 3.0, sample only** (`airflow dags test tagline_daily 2026-09-28`, run
+**Stage 3, full DAG run on runtime 3.0, sample only** (`airflow dags test tagline_daily 2026-09-28`, run
 `manual__2026-09-28T14:17:36.172874+00:00`, with the committed `spark/` mounted as it is, code
 version `230e52e7cb36`): 26 tasks succeeded and 1 was skipped (the GA4 sensor: no export configured),
 all nine Stage 2 checks and all three attribution checks passed, and `run_summary` succeeded.
@@ -377,9 +452,10 @@ about $1.70 a month). Those figures are from Google's
 same way, Serverless for Apache Spark, where the attribution batch runs, is now Managed Service for
 Apache Spark, serverless deployment, and its pricing page is titled so),
 read on 2026-09-28; 12 DCUs is Google's example, not a quoted minimum. This pipeline runs once a
-day, and a whole run, measured above, is about 8 minutes and $0.081: 8.70 GiB of BigQuery
-(about $0.05) and one Spark batch of about 6.5 minutes and 0.44 DCU-hours (about $0.03). Composer
-would cost the price of that run every 7 minutes, whether or not it runs.
+day, and since Stage 4 a whole daily run, measured above, is about 4 minutes and $0.019: 2.2 GiB of
+BigQuery (about $0.014) and one Spark batch of about 2.5 minutes and 0.08 DCU-hours (about $0.005).
+Composer would cost the price of that run every 1.6 minutes, whether or not it runs. (Stage 3's run
+was 8 minutes and $0.081, the price of 7 minutes of Composer.)
 At $0.72 an hour an environment would pass the project's $10 monthly
 budget alert in its first 14 hours. Local Airflow in Docker runs the same operators against the same
 project for nothing, while the machine is on, which is the honest trade-off: nobody runs it at 10:00

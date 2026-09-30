@@ -34,10 +34,12 @@ DAG_ID = "tagline_daily"
 
 MODEL_EDGES = {  # docs/data-model.md, "Lineage"
     ("stg_events", "stg_items"),
-    ("stg_events", "int_identity"),
+    ("stg_events", "int_purchases"),
+    ("stg_events", "int_device_days"),
+    ("int_device_days", "int_identity"),
     ("stg_events", "fct_sessions"),
     ("int_identity", "fct_sessions"),
-    ("stg_events", "fct_orders"),
+    ("int_purchases", "fct_orders"),
     ("int_identity", "fct_orders"),
     ("fct_sessions", "fct_orders"),
     ("fct_orders", "fct_order_items"),
@@ -46,7 +48,7 @@ MODEL_EDGES = {  # docs/data-model.md, "Lineage"
     ("fct_sessions", "mart_funnel_daily"),
 }
 MODELS = [
-    "stg_events", "stg_items", "int_identity", "fct_sessions",
+    "stg_events", "stg_items", "int_purchases", "int_device_days", "int_identity", "fct_sessions",
     "fct_orders", "fct_order_items", "mart_campaign_daily", "mart_funnel_daily",
 ]
 STAGE2_CHECKS = [
@@ -86,7 +88,7 @@ def test_dag_imports_without_errors():
 
 def test_task_ids():
     expected = {
-        "check_ga4_export", "wait_for_ga4_export", "no_ga4_export", "prepare_sources",
+        "check_ga4_export", "wait_for_ga4_export", "no_ga4_export", "prepare_sources", "build_mode", "stage2_incremental",
         *MODELS,
         *(f"stage2_checks.{c}" for c in STAGE2_CHECKS),
         "attribution_enabled", "spark_attribution",
@@ -103,9 +105,12 @@ def test_dependencies():
         ("check_ga4_export", "no_ga4_export"),
         ("wait_for_ga4_export", "prepare_sources"),
         ("no_ga4_export", "prepare_sources"),
-        ("prepare_sources", "stg_events"),
+        ("prepare_sources", "build_mode"),
+        ("build_mode", "stage2_incremental"),
+        ("build_mode", "stg_events"),
         *MODEL_EDGES,
         *((m, f"stage2_checks.{c}") for m in LEAF_MODELS for c in STAGE2_CHECKS),
+        *(("stage2_incremental", f"stage2_checks.{c}") for c in STAGE2_CHECKS),
         *((f"stage2_checks.{c}", "attribution_enabled") for c in STAGE2_CHECKS),
         ("attribution_enabled", "spark_attribution"),
         *(("spark_attribution", f"attribution_checks.{c}") for c in ATTRIBUTION_CHECKS),
@@ -134,7 +139,87 @@ def test_run_settings():
     assert 0 < sensor.timeout <= 12 * 3600
     assert dag.get_task("prepare_sources").trigger_rule == "none_failed"
     assert dag.get_task("run_summary").trigger_rule == "all_done"
+    for c in STAGE2_CHECKS:  # after whichever build branch ran
+        assert dag.get_task(f"stage2_checks.{c}").trigger_rule == "none_failed_min_one_success", c
+    assert dag.params["full_refresh"] is False, "the daily run is incremental unless asked otherwise"
     assert [t.task_id for t in dag.tasks if not t.downstream_task_ids] == ["run_summary"], "run_summary must be the only leaf"
+
+
+def test_build_mode_is_incremental_unless_full_refresh():
+    task = load_dag().get_task("build_mode")
+    assert task.python_callable(params={"full_refresh": False, "attribution": True}) == "stage2_incremental"
+    assert task.python_callable(params={}) == "stage2_incremental"
+    assert task.python_callable(params={"full_refresh": True}) == ["stg_events"]
+
+
+def test_the_incremental_task_runs_the_pipelines_script_with_the_airflow_label():
+    """stage2.run_incremental hands the pipeline a BigQuery wrapper labelled orchestrator=airflow (so Stage 4 finds
+    the script's job by label, as it finds the model tasks'), and returns one cost record per statement."""
+    from unittest import mock
+
+    from tagline_airflow import settings, stage2
+    from tagline_pipeline import pipeline
+    from tagline_pipeline.costs import JobStat
+
+    cfg = settings.pipeline_config()
+    seen = {}
+
+    def fake_build_incremental(c, bq, **kwargs):
+        seen["labels"] = bq.extra_labels
+        return pipeline.BuildResult(stats=[JobStat("stg_events", "merge", bytes_billed=10, parent_job_id="script_1")])
+
+    with mock.patch.object(pipeline, "build_incremental", fake_build_incremental), contextlib.redirect_stdout(io.StringIO()):
+        out = stage2.run_incremental(cfg, client=object())
+    assert seen["labels"] == {"orchestrator": "airflow"}
+    assert out == [{"step": "stg_events", "kind": "merge", "bytes_processed": None, "bytes_billed": 10, "slot_ms": None, "seconds": None,
+                    "rows": None, "job_id": None, "dry_run": False, "parent_job_id": "script_1"}]
+
+
+def test_the_stg_events_task_records_what_it_read_taken_before_the_job():
+    """With full_refresh, the stg_events task does what `make build` does around stg_events: the site export's metadata
+    before the job, staged_export_days replaced after it (the daily build compares the export with that record).
+    No other model task touches the record."""
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from tagline_airflow import operators, settings
+    from tagline_pipeline import pipeline
+    from tagline_pipeline.sources import SiteTables
+
+    cfg = settings.pipeline_config()
+    site = SiteTables(daily=("20260927",), intraday_only=())
+    calls = []
+
+    class FakeBigQuery:
+        def __init__(self, c, client=None, extra_labels=None):
+            self.labels = extra_labels
+
+        def apply_docs(self, *args, **kwargs):
+            calls.append("docs")
+
+        def num_rows(self, table_id):
+            return 3
+
+    def export_state(c, bq, s):
+        calls.append(("export_state", s, bq.labels))
+        return {"20260927": "state"}
+
+    def record_staged(c, bq, state):
+        calls.append(("record_staged", state))
+
+    tasks = {t.task_id: t for t in load_dag().tasks}
+    fake_hook = SimpleNamespace(get_client=lambda project_id=None, location=None: object())
+    with mock.patch.object(operators, "BigQuery", FakeBigQuery), mock.patch.object(operators, "BigQueryHook", lambda **kw: fake_hook), \
+            mock.patch.object(pipeline, "export_state", export_state), mock.patch.object(pipeline, "record_staged", record_staged), \
+            contextlib.redirect_stdout(io.StringIO()):
+        for name in ("stg_events", "stg_items"):
+            op = tasks[name]
+            op.hook = fake_hook
+            op.before_job({}, cfg, site)
+            calls.append(f"job {name}")
+            op.after_job({}, cfg, site, "", None, SimpleNamespace(rows=None))
+    assert calls == [("export_state", site, {"orchestrator": "airflow"}), "job stg_events", "docs", ("record_staged", {"20260927": "state"}),
+                     "job stg_items", "docs"]
 
 
 def test_every_bigquery_job_has_the_cost_guard():

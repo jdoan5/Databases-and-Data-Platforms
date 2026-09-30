@@ -59,17 +59,23 @@ PARTITION BY session_date
 CLUSTER BY source
 AS
 WITH events AS (
+  -- A session is source + user_pseudo_id + ga_session_id, which is what stg_events.session_key spells out.
+  -- Grouping on the three columns, and rebuilding session_key from them below, reads 33 MiB of ga_session_id
+  -- instead of the 174 MiB session_key string (Stage 4, experiment 2); the WHERE keeps exactly the events whose
+  -- session_key is not NULL.
   SELECT
     *,
-    MIN(IF(event_name = 'page_view', event_timestamp, NULL)) OVER (PARTITION BY session_key) AS landing_at
+    MIN(IF(event_name = 'page_view', event_timestamp, NULL)) OVER (PARTITION BY source, user_pseudo_id, ga_session_id) AS landing_at
   FROM `{{ project }}.{{ staging }}.stg_events`
-  WHERE session_key IS NOT NULL
+  WHERE user_pseudo_id IS NOT NULL AND ga_session_id IS NOT NULL
+  -- make build-incremental narrows this to the sessions it recomputes (tagline_pipeline/incremental.py); empty otherwise
+  {{ incremental_filter }}
 ),
 
 sessions AS (
   SELECT
     source,
-    session_key,
+    CONCAT(source, ':', user_pseudo_id, ':', CAST(ga_session_id AS STRING)) AS session_key,
     user_pseudo_id,
     ga_session_id,
     MAX(ga_session_number) AS ga_session_number,
@@ -121,9 +127,11 @@ sessions AS (
     COUNTIF(event_name = 'purchase') AS purchase_events,
     COUNTIF(event_name = 'purchase' AND NOT is_duplicate_purchase AND NOT is_zero_value_without_id) AS orders,
     COUNTIF(event_name = 'purchase' AND NOT is_duplicate_purchase AND is_zero_value_without_id) AS zero_value_orders,
-    SUM(IF(event_name = 'purchase' AND NOT is_duplicate_purchase, purchase_revenue_usd, NULL)) AS revenue_usd
+    -- Summed as NUMERIC (exact decimals), so the total does not depend on the order BigQuery adds the rows in
+    -- (a FLOAT64 sum can differ in the last bit between two builds of the same data; Stage 4).
+    CAST(SUM(CAST(IF(event_name = 'purchase' AND NOT is_duplicate_purchase, purchase_revenue_usd, NULL) AS NUMERIC)) AS FLOAT64) AS revenue_usd
   FROM events
-  GROUP BY source, session_key, user_pseudo_id, ga_session_id
+  GROUP BY source, user_pseudo_id, ga_session_id
 ),
 
 attributed AS (
@@ -148,6 +156,8 @@ SELECT
   s.session_start_at,
   s.session_end_at,
   TIMESTAMP_DIFF(s.session_end_at, s.session_start_at, MICROSECOND) / 1e6 AS duration_seconds,
+  -- identity: begin (make build-incremental reuses these three expressions to re-resolve sessions whose device's
+  -- identity changed; s.session_user_id is the session's own user_id, i the device's int_identity row)
   COALESCE(s.session_user_id, i.person_id) AS person_id,
   COALESCE(s.session_user_id, i.user_id) AS user_id,
   CASE
@@ -156,6 +166,7 @@ SELECT
     WHEN i.identity_rule = 'shared_device' THEN 'shared_device_anonymous'
     ELSE 'anonymous_device'
   END AS identity_rule,
+  -- identity: end
   s.session_user_id_count,
   -- The chosen record's fields; a field it leaves empty is (not set), and so is a session with
   -- nothing to go on (unknown, not direct: the sample collects no source on session_start).

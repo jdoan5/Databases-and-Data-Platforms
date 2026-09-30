@@ -23,7 +23,8 @@ def fake(monkeypatch):
             raise state["build_error"]
         return pipeline.BuildResult(stats=stats)
 
-    def run_checks(cfg, client, site=None, stats=None):
+    def run_checks(cfg, client, site=None, stats=None, directory=None):
+        state["check_dir"] = directory
         stats.append(JobStat("01_keys_unique", "check", bytes_processed=1, bytes_billed=10))
         return [pipeline.CheckResult("01_keys_unique", "keys", state["check_failures"])], stats
 
@@ -62,3 +63,30 @@ def test_a_configuration_error_is_exit_2(monkeypatch, capsys):
     monkeypatch.setattr(cli, "load_config", load_config)
     assert cli.main(["check"]) == cli.EXIT_CONFIG
     assert "configuration error" in capsys.readouterr().err
+
+
+def test_check_dir_runs_another_directory_of_checks(fake, tmp_path):
+    assert cli.main(["check", "--dir", str(tmp_path)]) == cli.EXIT_OK
+    assert fake["check_dir"] == tmp_path.resolve()
+    assert cli.main(["check"]) == cli.EXIT_OK
+    assert fake["check_dir"] is None
+
+
+def test_lookback_zero_is_refused_not_replaced_by_the_default(fake, monkeypatch, capsys):
+    from tagline_pipeline import incremental
+
+    seen = []
+
+    def build_incremental(cfg, client, *, since=None, lookback=None, stats=None, print_script=False):
+        seen.append(lookback)
+        incremental.plan_window({}, {}, lookback=lookback)  # refuses a lookback below 1, as the real one does
+        return pipeline.BuildResult(stats=stats, window=incremental.Window())
+
+    monkeypatch.setattr(pipeline, "build_incremental", build_incremental)
+    assert cli.main(["build", "--incremental", "--lookback", "0"]) == cli.EXIT_CONFIG
+    assert "lookback must be at least 1 day" in capsys.readouterr().err
+    assert cli.main(["build", "--incremental", "--lookback", "2"]) == cli.EXIT_OK
+    assert cli.main(["build", "--incremental"]) == cli.EXIT_OK
+    assert seen == [0, 2, incremental.DEFAULT_LOOKBACK_DAYS]
+    # without --incremental, any --lookback (0 included) is a usage error
+    assert cli.main(["build", "--lookback", "0"]) == cli.EXIT_CONFIG

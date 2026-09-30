@@ -189,3 +189,39 @@ def test_daily_mart_splits_complete_and_incomplete_lookback(frames):
     got = {(r.lookback_complete, r.session_medium): (r.attributed_orders, r.attributed_revenue_usd) for r in mart}
     assert got == {(False, "cpc"): (1.0, 10.0), (True, "cpc"): (1.0, 30.0)}
     assert set(models.MART_KEYS) | {"attributed_orders", "attributed_revenue_usd"} == set(models.daily_mart(a).columns)
+
+
+@pytest.mark.parametrize("seed", [4, 5])
+def test_output_does_not_depend_on_partitioning(spark, seed):
+    """Stage 4 tunes shuffle partitions and threads (experiments 6 and 7); an optimisation that changed a weight or a
+    mart sum in the last bit would be a result change. Same input, split and shuffled differently: identical rows."""
+    from conftest import ORDER_SCHEMA, SESSION_SCHEMA, data_start_session
+
+    from attribution import tables
+
+    orders, sessions = random_journeys(seed, n_orders=150)
+    before = spark.conf.get("spark.sql.shuffle.partitions")
+
+    def run(partitions: int, split: int):
+        spark.conf.set("spark.sql.shuffle.partitions", str(partitions))
+        o = spark.createDataFrame(orders, ORDER_SCHEMA).repartition(split)
+        s = spark.createDataFrame([*sessions, data_start_session()], SESSION_SCHEMA).repartition(split)
+        a = models.attribute(journeys.build_touches(o, s)).select(*tables.column_names(tables.FCT_ATTRIBUTION))
+        m = models.daily_mart(a).select(*tables.column_names(tables.MART_ATTRIBUTION_DAILY))
+        return [sorted(tuple(r) for r in df.collect()) for df in (a, m)]
+
+    try:
+        reference = run(1, 1)
+        for partitions, split in ((8, 3), (200, 5)):
+            assert run(partitions, split) == reference, f"{partitions} shuffle partitions, input split {split}"
+    finally:
+        spark.conf.set("spark.sql.shuffle.partitions", before)
+
+
+def test_the_mart_sums_do_not_depend_on_the_order_rows_are_added(spark):
+    """0.1 + 0.2 + 0.3 is 0.6000000000000001 or 0.6 in DOUBLE, depending on the order; the mart sums exactly."""
+    keys = {k: v for k, v in zip(models.MART_KEYS, (T0.date(), "ga4_sample", "linear", "google", "cpc", "brand", True))}
+    rows = [{**keys, "weight": w, "attributed_revenue_usd": w * 10} for w in (0.1, 0.2, 0.3)]
+    frames = [spark.createDataFrame(rs).repartition(n) for rs, n in ((rows, 1), (rows[::-1], 3), (rows[1:] + rows[:1], 2))]
+    got = {tuple(models.daily_mart(df).select("attributed_orders", "attributed_revenue_usd").first()) for df in frames}
+    assert got == {(0.6, 6.0)}

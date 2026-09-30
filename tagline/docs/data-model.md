@@ -2,10 +2,12 @@
 
 Stage 2 turns raw GA4 BigQuery export rows into stitched, enriched tables. Python
 (`tagline/pipeline`) loads reference data, builds the SQL models in order and runs the
-checks; the modelling is plain SQL in `pipeline/sql/models/`, one file per table. Every table
-is `CREATE OR REPLACE`d on every build, carries a table description and a description on
-every column (the runner refuses to finish a model with an undocumented column), and is
-labelled `app:tagline, stage:2`. Everything lives in one project, in the US multi-region,
+checks; the modelling is plain SQL in `pipeline/sql/models/`, one file per table. A full build
+(`make build`) `CREATE OR REPLACE`s every table; the daily incremental build (`make
+build-incremental`, Stage 4) updates them in place from the same SQL, only for the export days that
+are new or may have changed ([below](#incremental-builds-stage-4)). Every table carries a table
+description and a description on every column (the runner refuses to finish a model with an
+undocumented column), and is labelled `app:tagline, stage:2`. Everything lives in one project, in the US multi-region,
 because the public sample is in the US and BigQuery cannot join across locations.
 
 Numbers for the GA4 sample are from the build of 2026-09-27; the build of 2026-09-28 added the
@@ -24,16 +26,20 @@ bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*        (source: ga
 <project>.analytics_<property_id>.events_intraday_YYYYMMDD             │    only when TAGLINE_GA4_DATASET
   daily tables, plus streaming tables for days with no daily table ────┤    is set and has tables)
                                                                        ▼
-                                             tagline_staging.stg_events ──► tagline_staging.stg_items
-                                                          │                                     │
-                                                          ├──► tagline_staging.int_identity     │
-                                                          ▼            │                        │
-                                             tagline_marts.fct_sessions ◄┘                      │
-                                                          │                                     │
-                                                          ▼                                     ▼
-                                             tagline_marts.fct_orders ──► tagline_marts.fct_order_items
-                                                          │                       ▲
-tagline/site/src/catalog/products.json ──► tagline_raw.products ──────────────────┘
+                                             tagline_staging.stg_events ─────────────► tagline_staging.stg_items
+                                                          │                                             │
+                            ┌─────────────────────────────┼──────────────────────────────┐              │
+                            ▼                             │                              ▼              │
+          tagline_staging.int_device_days                 │               tagline_staging.int_purchases │
+                            │                             │                              │              │
+                            ▼                             ▼                              │              │
+          tagline_staging.int_identity ──────► tagline_marts.fct_sessions                │              │
+                            │                             │                              │              │
+                            └─────────────────────────────┴──► tagline_marts.fct_orders ◄┘              │
+                                                                          │                             ▼
+                                                                          └──────────► tagline_marts.fct_order_items
+                                                                                                        ▲
+tagline/site/src/catalog/products.json ──► tagline_raw.products ────────────────────────────────────────┘
   + SYNTHETIC unit_cost (reference.py)
 
 reference.py (seeded) ──► tagline_raw.campaign_costs (SYNTHETIC) ──┐
@@ -43,10 +49,13 @@ reference.py (seeded) ──► tagline_raw.campaign_costs (SYNTHETIC) ──┐
 ```
 
 Build order is the numeric prefix of the model files: `10_stg_events`, `20_stg_items`,
-`30_int_identity`, `40_fct_sessions`, `50_fct_orders`, `60_fct_order_items`,
-`70_mart_campaign_daily`, `80_mart_funnel_daily`. `stg_`/`int_` models build into
-`tagline_staging`, `fct_`/`mart_` into `tagline_marts`. `fct_orders` also reads `stg_events`
-(the purchase events) and `int_identity` (the person of an order placed in no session).
+`25_int_purchases`, `27_int_device_days`, `30_int_identity`, `40_fct_sessions`, `50_fct_orders`,
+`60_fct_order_items`, `70_mart_campaign_daily`, `80_mart_funnel_daily`. `stg_`/`int_` models build
+into `tagline_staging`, `fct_`/`mart_` into `tagline_marts`. `fct_orders` reads the purchase events
+from `int_purchases` (stg_events' 5,705 purchase rows, narrow) rather than scanning all of
+`stg_events`, plus `fct_sessions` and `int_identity` (the person of an order placed in no session).
+`int_identity` adds up `int_device_days` (stg_events grouped by device and day). Both narrow tables
+were added in Stage 4 for the daily incremental build ([below](#incremental-builds-stage-4)).
 `fct_order_items` reads three tables: the order from `fct_orders`, its lines from `stg_items`
 (the kept purchase event's items) and the catalog cost from `tagline_raw.products`.
 
@@ -59,25 +68,39 @@ Build order is the numeric prefix of the model files: `10_stg_events`, `20_stg_i
 | `tagline_raw.products` | catalog SKU | `item_id` | none (20 rows) | 20 (the site's catalog) | |
 | `tagline_raw.campaign_costs` | day × data source × source / medium / campaign | `cost_date, source, session_source, session_medium, session_campaign` | none (556 rows) | 190 | 366 |
 | `tagline_staging.stg_events` | GA4 event (exact export duplicates collapsed) | `source, event_key` | `event_date` / `source, event_name` | 4,295,584 | 1,433 |
-| `tagline_staging.stg_items` | item in an ecommerce event's `items` array | `source, event_key, item_index` | `event_date` / `source, event_name, item_id` | 3,982,732 | 3,137 |
+| `tagline_staging.stg_items` | item in an ecommerce event's `items` array | `source, event_key, item_index` | `event_date` (not clustered since Stage 4) | 3,982,732 | 3,137 |
+| `tagline_staging.int_purchases` | purchase event (repeats included), the columns `fct_orders` needs | `source, event_key` | `event_date` | 5,692 | 13 |
+| `tagline_staging.int_device_days` | device × day it was seen | `source, user_pseudo_id, event_date` | `event_date` | 319,066 | 48 |
 | `tagline_staging.int_identity` | device (`user_pseudo_id`) | `source, user_pseudo_id` | none: no date grain, always read whole | 270,154 | 48 |
+| `tagline_staging.staged_export_days` | site export day in `stg_events`: the export table read for it and that table's metadata ([below](#incremental-builds-stage-4)) | `source, export_day` | none (one row a day) | | 1 |
 | `tagline_marts.fct_sessions` | session | `source, user_pseudo_id, ga_session_id` (also `session_key`) | `session_date` / `source` | 360,129 | 48 |
 | `tagline_marts.fct_orders` | order | `source, order_id` | `order_date` | 5,368 | 13 |
 | `tagline_marts.fct_order_items` | order line | `source, order_id, line_number` | `order_date` | 15,063 | 22 |
 | `tagline_marts.mart_campaign_daily` | date × source × session source / medium / campaign | all five | `date` | 2,634 | 5 |
 | `tagline_marts.mart_funnel_daily` | date × source | `date, source` | `date` | 92 | 1 |
 
-Partitioning is by the table's date because the spec asks for it and because analysts'
-reads will filter on dates; clustering is on the columns such reads are expected to filter on
-(`source`, `event_name`, `item_id`). **At this volume none of it prunes anything, measured:**
-no model, check or report filters on a date, nothing filters `stg_items` on `event_name` or
-`item_id`, and the daily partitions are far below the 64 MB Google gives as the size where
-clustering starts to help (`stg_events` averages 28.7 MiB a day, `stg_items` 8.8 MiB, the marts
-under 2 MiB; `fct_orders` is 1.3 MiB in 92 partitions). A test query, `COUNT(DISTINCT
-session_key)` over `stg_events` `WHERE event_name = 'purchase'`, processed 207,929,957 bytes,
-exactly its dry-run upper bound. So the layout is a placeholder: Stage 4 decides it, and its
-first hypothesis is already measured (in a scratch copy, the same `stg_events` columns
-unpartitioned and clustered by `event_name` processed 9.4 times fewer bytes for that query).
+Partitioning is by the table's date. Stage 4 measured the layout (experiment 4) and kept it with one change:
+
+- **Daily partitions stay**, because the daily incremental build replaces a day's partitions and reads only
+  the partitions it needs. On an unpartitioned copy of `stg_events`, the statement that replaces one day
+  would bill the whole table, 2.58 GiB (dry run), against 16 MiB with daily partitions.
+- **`stg_events` stays clustered by `source, event_name`.** Within daily partitions of about 28 MiB it
+  prunes little but not nothing: reads filtered on `event_name = 'purchase'` billed about 15% less clustered
+  than not (`int_purchases` 299 against 353 MiB, check 03 97 against 113 MiB; medians of the final full builds
+  against experiment 4's), and building it cost no measurable extra slot time. On an unpartitioned copy clustered the same way, the same purchase read billed 12 MiB
+  instead of 303: clustering needs bigger blocks than a day of this data, which is what the daily build
+  gives up.
+- **`stg_items` is no longer clustered**: nothing reads it by `event_name` or `item_id`, and without the
+  clustering its build took about half the slot-ms, for the same bytes. Experiment 4 removed three tables'
+  clustering in the same builds (50–53k slot-ms, with `stg_events`, which `stg_items` reads, unclustered too);
+  the six final builds, with `stg_events` clustered and `stg_items` not, isolate it: 62k (49–83k) against
+  94–168k clustered (baseline and experiment 2, three builds each).
+- `fct_sessions` stays clustered by `source`: with and without, the builds were within noise (not isolated:
+  its input `stg_events` was unclustered in the same builds). The marts'
+  date partitions are tiny (`fct_orders` is 1.3 MiB in 93 partitions), below BigQuery's 10 MiB minimum per
+  table read, so they cost nothing either way.
+- A layout change needs the table dropped first: `CREATE OR REPLACE` refuses to change a table's clustering
+  ("Cannot replace a table with a different partitioning spec").
 
 `session_key` is `source:user_pseudo_id:ga_session_id`. In live exports `ga_session_id` is the
 session's start time in seconds; in the obfuscated sample it is not (0 of 360,129 sample
@@ -355,7 +378,7 @@ Each check is a query in `pipeline/sql/checks/` that returns no rows when it pas
 
 | Check | What it enforces |
 |---|---|
-| 01 keys unique | every table's key is unique and never NULL (all ten tables above) |
+| 01 keys unique | every table's key is unique and never NULL (all twelve tables above) |
 | 02 orders have session and person | every order has a person; an order with a session is in `fct_sessions` and, unless its own purchase carried a `user_id`, has the session's person and rule; an order with no session is in the documented no-session rules (`signed_in_purchase`, `device_without_session`, `cookieless`); every order line has an order |
 | 03 order revenue reconciles | per source: order count, dropped duplicates, zero-value orders, distinct transaction ids, revenue, tax and shipping in `fct_orders` equal the deduplicated purchase events in `stg_events`, and `fct_sessions` `orders + zero_value_orders` and revenue equal the `fct_orders` that have a session |
 | 04 marts reconcile | per source: `mart_campaign_daily` sessions, engaged sessions, orders, revenue equal `fct_sessions`, and its cost equals `campaign_costs` on covered dates; funnel sessions and conversions equal `fct_sessions`, and each step is no larger than the one before |
@@ -364,6 +387,131 @@ Each check is a query in `pipeline/sql/checks/` that returns no rows when it pas
 | 07 identity | no person has two `user_id`s; each device's person and rule follow from its `user_id`s and each session's from its own `user_id` and device (NULL-safe); every `user_id` is 32-hex |
 | 08 no email-like strings | no email (raw or `%40`) in `user_id`, `person_id`, page URL, title, referrer, search term or landing page; reports counts, never values |
 | 09 synthetic is labelled | every cost row is flagged synthetic and both reference tables' descriptions say SYNTHETIC |
+
+---
+
+## Incremental builds (Stage 4)
+
+`make build` rebuilds every table from every export day (about 8 GiB billed). `make build-incremental`,
+and the DAG's default run, processes only the export days that are new or may have changed, and applies
+them to every table in **one BigQuery script, in one transaction**
+([`incremental.py`](../pipeline/tagline_pipeline/incremental.py)): if any statement fails, every table
+stays as it was. The rules below rely on the tables being one consistent build, since each run reads the
+previous run's tables as its history. A daily run keeps them so; a full build does not guarantee it (each
+model is its own job, see [when to run a full build](#when-to-run-a-full-build)).
+
+**What was staged.** Every build that writes `stg_events` also writes `tagline_staging.staged_export_days`:
+one row per site export day, naming the export table the build read for it (the daily table, else the
+streaming one) and that table's last modification time and row count, from the export dataset's `__TABLES__`
+(metadata, 0 bytes billed) taken **before** the build read the table. A full build replaces the whole table
+after `stg_events` (a DDL job that reads nothing; the DAG's `stg_events` task does the same); the daily build
+replaces its window's days inside its own transaction, so the record always describes what `stg_events` holds.
+Taking the metadata before the read errs one way only: a change that lands while a run reads the day makes the
+day look changed next time, never unchanged.
+
+**Which days (the window).** Per source, from the earliest day that needs processing to that source's
+newest export day. A day needs processing when:
+
+- it has an export table but no rows in `stg_events` yet (a new day, or a gap after missed runs);
+- **its export no longer matches what was staged**: the table a build would read for the day now is another
+  one (the day was read from its streaming table and its daily table has landed since), or it was modified
+  since, or it has another row count. That covers GA4 adding late events or reprocessing a day (which Google
+  says can happen, occasionally, after its usual update period too), a day backfilled or replaced by hand, and
+  runs that did not happen: the next run compares with what was staged, whenever that was. A loaded day with
+  no record (tables built before the record existed) is read once more, and recorded;
+- for the site, it is one of the **4 days up to the newest day that has a daily table**, a floor under the
+  rule above. Google updates a daily table "for up to 2 calendar days, plus today" after its date (table
+  20220101 through 20220104), so the run on the fourth day after a date is the first to read its final table.
+  Counting from the newest *daily* table keeps a streaming table for today (streaming export) from shortening
+  that. A streaming table is always in the window anyway, being newer than every daily table, which matters
+  because the metadata does not count a streaming table's buffer;
+- the sample: static, so only days not loaded yet;
+- `SINCE=YYYYMMDD` (`--since`) starts every source's window on that day, and refuses if an earlier export
+  day is missing or changed; `LOOKBACK=n` (`--lookback`) replaces the 4, and a lookback below 1 is refused.
+
+This is the third version of the rule. The first re-read the site's newest 3 *export* days and nothing
+else: with the DAG reading the previous day's table once it lands (13:36 UTC for this property's first day,
+whose time zone is about UTC−7), it stopped reading a day about 17 hours before GA4 stopped updating it (a day
+longer with streaming on, whose table for today counted as the newest day), and it never noticed a change to a
+day outside those 3. A review found both. The second compared each export table's modification time with the
+time the day's `stg_events` partition was last written, which misses a change that lands between a run's read
+and its commit (the partition is written after the read, so it looks newer than the change); the record taken
+before the read replaced it. The measured runs are not affected: the site export has one day, which every
+version reads.
+
+The days already loaded are read from `stg_events`' date partitions (`INFORMATION_SCHEMA.PARTITIONS`, a
+metadata query, 10 MiB), the record through the table-data API (no query), and the export's metadata from
+`__TABLES__` (0 bytes); both queries are in the run's cost table. A window always runs to the newest day, so
+every row it replaces is newer than every row it keeps. The purchase dedupe relies on that.
+
+What is left uncovered: a day deleted from the export, or expired. The run reports it and keeps its rows unless
+the window starts on or before it; a full build drops them. No check compares the site's staged rows per day
+with its export tables, as check 05 does for the sample: the window re-reads a changed day instead, and a count
+check would add a billed query to every run and could not be exact for a streaming table, whose buffer the
+metadata does not count (not done).
+
+**What each table does**, with the model files' own SQL (each has an `incremental_filter` hook that a full
+build leaves empty):
+
+| table | in the daily build | why |
+|---|---|---|
+| `stg_events` | the window's date partitions are replaced; earlier purchase rows whose `transaction_id` the window now also shows on another device (or no longer does) get the new collision flag and `order_id` | rows are per export row; the window's purchases are deduplicated against the earlier ones in `int_purchases` |
+| `stg_items`, `int_purchases`, `int_device_days` | the window's date partitions are replaced (`int_purchases` also takes the collision updates) | rows are per event, or per device and day |
+| `int_identity` | recomputed whole, from `int_device_days` (about 20 MiB) | a sign-in today gives the device's earlier events to the person, and `person_device_count` spans devices |
+| `fct_sessions` | every session with an event in the window, before or after this run, is recomputed from all its events (from the first day of the earliest such session); every other session on a device whose person, `user_id` or rule changed gets them again | sessions cross midnight; identity reaches back |
+| `fct_orders` | recomputed whole, from `int_purchases`, `fct_sessions` and `int_identity` (about 70 MiB) | an order takes its session's attribution and person |
+| `fct_order_items` | the lines of every order that is new, gone or changed, read from the `stg_items` partitions of those orders' dates | lines carry the order's id, person and session |
+| `mart_campaign_daily`, `mart_funnel_daily` | recomputed whole | a few MiB of `fct_sessions` |
+| `staged_export_days` | the site window's days replaced by what this run read (the metadata taken before the read) | the next run compares the export with it |
+
+The three expressions that give a session its person (`-- identity: begin` to `-- identity: end` in
+`40_fct_sessions.sql`) are read out of the model file for the re-resolution, so that rule is written once.
+Money totals (`fct_sessions.revenue_usd`, `mart_campaign_daily.revenue_usd` and `cost_usd`) are summed as
+NUMERIC and turned back into FLOAT64, so a total does not depend on the order BigQuery adds rows in: as a
+FLOAT64 sum, one mart row came out as 278.96 in one build and 278.96000000000004 in another, which would
+have made an incremental and a full build differ in the last bit.
+
+**Identical to a full build on every step tested.** `make stage4-equivalence` runs in throwaway datasets
+(`tagline_s4_eq_*`, deleted at the end, and first if an interrupted run left them) and diffs all ten Stage 2
+tables exactly (EXCEPT DISTINCT both ways, row counts, multiset hashes) against a full build of the same export
+tables, after the pipeline's nine checks pass on the incremental tables: the GA4 sample built through
+2021-01-30 with 2021-01-31 added incrementally; then the site's export day added incrementally; then the
+Stage 2 fixture's site rows arriving day by day with a lookback of 1, so that only the rule under test can
+bring an earlier day into the window. Each fixture step names the conditional updates that must run (and no
+others), the day the site's window must start on, and facts on the incremental tables that show its path was
+taken: a sign-up reaching back to a session **and an order** outside the window, a streaming-only day, that
+day's daily table arriving (one event fewer, one late event more) after the day was staged from the streaming
+one, another device reusing a `transaction_id` from outside the window and the collision going away again on
+re-delivery, a session and a device vanishing, a repeat purchase across the window's edge, a device turning
+shared (its earlier session and order going back to the device's own person), a day restated after it was
+staged, and a run with nothing new. Results: every table identical in all five steps of the first run and of
+the rerun on the final Stage 4 code (`bench/results/s4-e1-equivalence.jsonl`, `s4-end-equivalence.jsonl`: the
+sample day, the site day and the first three fixture days, each also listing its statements); after the review,
+the sample and site scenarios identical again (`s4-review-equivalence.jsonl`), and the seven fixture steps above
+identical, every expectation met, on the code as it stands (`s4-fix-equivalence.jsonl`, 19 minutes, 9.0 GiB,
+about $0.055).
+
+### When to run a full build
+
+`make build`, or the DAG with `{"full_refresh": true}`:
+
+- the first build;
+- after changing a model's SQL: the daily build only redoes the window, so older rows would keep the old logic;
+- after `make reference` changes `tagline_raw.products`: `fct_order_items` takes each line's unit cost and
+  catalog flag from it, and the daily build recomputes only the lines of changed orders, so older lines would
+  keep the old costs (the campaign mart is recomputed whole and takes new campaign costs on its own);
+- **after a full build that failed part way** (`make build`, or a full-refresh DAG run, stopping at a model
+  that fails): each model is its own `CREATE OR REPLACE` job, with no transaction around them, so the tables
+  are left part new and part old. The next daily run would build on that mix and never repair it:
+  rerun the full build until it succeeds;
+- after an export day is deleted or expires (the daily run reports it and keeps its rows), or if the GA4
+  property's time zone changes (the window assumes a later `event_date` means a later event).
+
+A day replaced, restated or backfilled in the export no longer needs one: its table no longer matches
+`staged_export_days`, which puts it back in the window. A partial build that does not write `stg_events`
+(`--from`, `--only` another model) leaves that record alone, as it leaves `stg_events`. Nothing checks that the
+tables are one consistent build; a build id stamped on every table by the full build, which the daily build
+would refuse to run past when the stamps differ, would, and is not done.
 
 ---
 
@@ -387,7 +535,9 @@ the items do not add up to the purchase revenue (448 lines have no revenue, 2 or
 items). `fct_orders` reports purchase revenue; `fct_order_items` reports what the lines say.
 
 A full build plus checks processes 8.57 GiB and bills 8.62 GiB, about $0.05 at on-demand
-prices; `stg_events` is 3.34 GiB of it. The cost table in the README has the breakdown.
+prices; `stg_events` is 3.34 GiB of it. The cost table in the README has the breakdown. (Those are Stage 2's
+numbers. After Stage 4 a full build bills 8.05 GiB, and the daily incremental build 2.12 GiB, 1.51 GiB of it the
+nine checks: `bench/results/`.)
 
 ## Reconciled numbers (site export)
 

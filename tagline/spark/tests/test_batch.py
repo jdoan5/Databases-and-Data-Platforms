@@ -48,6 +48,10 @@ def test_batch_has_the_cost_guards_and_runs_as_the_service_account():
     props = body["runtime_config"]["properties"]
     assert props["spark.executor.instances"] == props["spark.dynamicAllocation.maxExecutors"] == "2"
     assert props["spark.driver.cores"] == props["spark.executor.cores"] == "4"
+    # Serverless wants 1024m to 7424m per driver core, overhead included; this is the minimum (Stage 4, experiment 9).
+    total_mb = sum(int(props[k].removesuffix("m")) for k in ("spark.driver.memory", "spark.driver.memoryOverhead"))
+    assert total_mb == 1024 * int(props["spark.driver.cores"])
+    assert props["spark.sql.shuffle.partitions"] == props["spark.driver.cores"]  # one per task thread (Stage 4, experiment 7)
     assert body["labels"] == {
         "app": "tagline", "stage": "3", "job": "attribution", "orchestrator": "make", "code": "abc123def456",
     }
@@ -59,8 +63,19 @@ def test_batch_has_the_cost_guards_and_runs_as_the_service_account():
             "--marts-dataset=tagline_marts",
             "--temp-bucket=my-bucket",
             f"--expected-spark-version={b.SPARK_VERSION}",
+            "--spark-master=local[4]",
         ],
     }
+
+
+def test_the_master_uses_every_driver_core_and_the_job_accepts_it():
+    """Runtime 3.0 runs the batch in local mode with one thread unless the job sets its master (Stage 4, experiment 6)."""
+    from attribution import job
+
+    assert b.SPARK_MASTER == f"local[{b.SPARK_PROPERTIES['spark.driver.cores']}]"
+    parsed = job.parse_args(b.job_args(TARGET))
+    assert parsed.spark_master == b.SPARK_MASTER and parsed.project == TARGET.project
+    assert "spark.master" not in b.SPARK_PROPERTIES, "the Batch API refuses spark.master except `local`"
 
 
 def test_batch_converts_to_the_dataproc_resource():

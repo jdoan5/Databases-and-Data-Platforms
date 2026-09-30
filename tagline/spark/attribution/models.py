@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
+from pyspark.sql import types as T
 
 HALF_LIFE_DAYS = 7.0
 MODELS = ("last_click", "last_non_direct", "first_click", "linear", "time_decay", "position_based")
@@ -75,12 +76,19 @@ def attribute(touches: DataFrame, half_life_days: float = HALF_LIFE_DAYS) -> Dat
     )
 
 
+# The mart's sums are taken in DECIMAL and cast back: a DOUBLE sum depends on the order the rows are added in, which
+# depends on how Spark partitions the work (Stage 4 measured 823 of 5,556 mart rows changing in the last bits when the
+# job ran on executors). Each weight and revenue is rounded to 18 decimal places, far below a double's precision for
+# values of this size, and the decimal sum is exact, so the mart is the same whatever the partitioning.
+EXACT_SUM = T.DecimalType(38, 18)
+
+
 def daily_mart(attribution: DataFrame) -> DataFrame:
     """mart_attribution_daily: order date x data source x model x session source / medium / campaign x
-    lookback_complete, with fractional attributed orders and attributed revenue."""
+    lookback_complete, with fractional attributed orders and attributed revenue (exact sums, see EXACT_SUM)."""
     return attribution.groupBy(*MART_KEYS).agg(
-        F.sum("weight").alias("attributed_orders"),
-        F.sum("attributed_revenue_usd").alias("attributed_revenue_usd"),
+        F.sum(F.col("weight").cast(EXACT_SUM)).cast("double").alias("attributed_orders"),
+        F.sum(F.col("attributed_revenue_usd").cast(EXACT_SUM)).cast("double").alias("attributed_revenue_usd"),
     )
 
 

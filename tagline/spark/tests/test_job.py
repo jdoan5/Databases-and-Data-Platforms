@@ -24,6 +24,15 @@ def test_parse_args_validates():
         job.parse_args(["--project=my-project-123", "--temp-bucket=b", "--marts-dataset=a.b"])
 
 
+def test_spark_master_argument():
+    assert args().spark_master is None, "no argument: the runtime's master"
+    for ok in ("local", "local[4]", "local[16]", "local[*]", "dataproc"):
+        assert args(f"--spark-master={ok}").spark_master == ok
+    for bad in ("yarn", "local[0]", "local[4", "spark://h:7077", "local[1000]", ""):
+        with pytest.raises(SystemExit):
+            args(f"--spark-master={bad}")
+
+
 def test_write_options_overwrite_a_partitioned_table_with_labelled_load_jobs():
     o = job.write_options("p.d.fct_attribution", "my-bucket", "fct_attribution")
     assert o["writeMethod"] == "indirect" and o["temporaryGcsBucket"] == "my-bucket"
@@ -100,6 +109,8 @@ def test_run_reads_attributes_checks_and_writes(frames, monkeypatch, capsys):
     assert summary["orders"] == 2 and summary["touches"] == 2 + 3 and summary["problems"] == []
     assert summary["fct_attribution_rows"] == 5 * len(models.MODELS)
     assert summary["orders_last_touch_not_order_session"] == 0
+    assert summary["spark_master"] == "local[2]" and summary["default_parallelism"] == 2  # the test session's
+    assert summary["app_id"].startswith("local-")
     assert summary["models"]["linear"] == {"orders": 2.0, "revenue_usd": 100.0}
     fct = writes["my-project-123.tagline_marts.fct_attribution"]
     assert list(fct[0].asDict()) == tables.column_names(tables.FCT_ATTRIBUTION)
@@ -123,3 +134,4 @@ def test_no_write(frames, monkeypatch):
     monkeypatch.setattr(job, "read_table", lambda spark, table, columns, where=None: (orders if table.endswith("fct_orders") else sessions).select(*columns))
     monkeypatch.setattr(job, "write_table", lambda *a, **k: pytest.fail("--no-write wrote"))
     assert job.run(orders.sparkSession, args("--no-write"))["written"] is False
+

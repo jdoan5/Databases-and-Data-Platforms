@@ -10,3 +10,6 @@ __pycache__/
 
 # Cost logs written by `make build COSTS_JSON=...`
 pipeline/runs/
+
+# Raw output of commands the Stage 4 harness ran (names the project); the results log is bench/results/
+bench/logs/

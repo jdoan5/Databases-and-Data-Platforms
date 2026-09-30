@@ -33,7 +33,10 @@ WITH sessions AS (
     COUNT(*) AS sessions,
     COUNTIF(is_engaged) AS engaged_sessions,
     SUM(orders) AS orders,
-    COALESCE(SUM(revenue_usd), 0) AS revenue_usd
+    -- Money is summed as NUMERIC (exact decimals) and turned back into FLOAT64, so a total does not depend on the
+    -- order BigQuery adds the rows in: as FLOAT64, one row's revenue came out as 278.96 in one build and
+    -- 278.96000000000004 in another (Stage 4).
+    COALESCE(CAST(SUM(CAST(revenue_usd AS NUMERIC)) AS FLOAT64), 0) AS revenue_usd
   FROM `{{ project }}.{{ marts }}.fct_sessions`
   GROUP BY date, source, session_source, session_medium, session_campaign
 ),
@@ -51,7 +54,7 @@ costs AS (
     c.session_source,
     c.session_medium,
     c.session_campaign,
-    SUM(c.cost_usd) AS cost_usd
+    CAST(SUM(CAST(c.cost_usd AS NUMERIC)) AS FLOAT64) AS cost_usd
   FROM `{{ project }}.{{ raw }}.campaign_costs` AS c
   JOIN covered AS v
     ON v.source = c.source AND c.cost_date BETWEEN v.first_date AND v.last_date

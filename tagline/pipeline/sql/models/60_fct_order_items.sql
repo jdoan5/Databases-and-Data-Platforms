@@ -51,6 +51,8 @@ WITH lines AS (
     ON i.source = o.source AND i.event_key = o.purchase_event_key
   LEFT JOIN `{{ project }}.{{ raw }}.products` AS p
     ON o.source = 'tagline_site' AND p.item_id = i.item_id
+  -- make build-incremental narrows this to the orders that changed (tagline_pipeline/incremental.py); empty otherwise
+  {{ incremental_filter }}
 )
 
 SELECT

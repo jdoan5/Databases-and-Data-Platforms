@@ -86,12 +86,18 @@ runtime's own, so tests and batches run on the same JVM; Spark 3.5 supports Java
 price: 3.0 is not LTS, end of support 2027-01-31 (2.3 LTS: 2027-11-26), and 3.0 has no staging bucket,
 Lightning Engine or Native Query Execution.
 
+**Local mode.** Runtime 3.0 starts this batch in Spark local mode with one task thread: Dataproc adds
+`spark.master=local` to the batch's Spark config, and the Batch API refused every other `spark.master`
+property tried. The job therefore takes its master as an argument, and `batch.py` passes
+`--spark-master=local[4]`, the driver's four cores ([Stage 4](#stage-4-local-mode-partitions-writes-size)
+has how this was found and what executors would cost).
+
 ## Run it
 
 ```bash
 cd tagline
 make spark-venv      # spark/.venv: pyspark 4.0.2, pytest, Google Cloud clients (Python 3.12+)
-make spark-test      # 41 tests, 25 to 45 s, on a local SparkSession with Java 21
+make spark-test      # 46 tests, 25 to 45 s, on a local SparkSession with Java 21
 make spark-submit    # LIVE: upload the code, run one batch, wait; prints wall time, DCU usage, cost
 make spark-status    # the latest batch (or BATCH=<id>), and any tagline batch still running
 make spark-report    # channel credit by model (all, complete-lookback); last_click vs Stage 2; the SQL rebuild
@@ -113,7 +119,9 @@ where Airflow's attempt hash comes from the task instance's id (a new UUID7 on e
 repeat, even after Airflow's metadata database is wiped.
 
 **Cost guards**: 30-minute TTL on every batch (it fired on the first run, below); the smallest shape
-(4-core driver, two 4-core executors, no scale-out, 250 GiB disks); labels `app=tagline, stage=3,
+(4-core driver with the minimum 4 GiB of memory, 250 GiB disks; since Stage 4 the job runs in the
+driver alone with 4 task threads and 4 shuffle partitions, [below](#stage-4-local-mode-partitions-writes-size),
+so the two 4-core executors `batch.py` still describes are never started); labels `app=tagline, stage=3,
 job=attribution, orchestrator, code`; Ctrl-C in `make spark-submit` cancels the batch. The job runs no
 BigQuery query jobs (reads are Storage Read API sessions, writes are load jobs); `make spark-report`'s
 three queries carry `maximum_bytes_billed`. The job checks its own output (every order has every model,
@@ -230,8 +238,8 @@ the site's export in Stage 2 (`bef2f7d9`, `e7c2318c`: 8 more orders of 4,926) sp
 375 s, compute 201.5 s and 166.9 s, write 135.7 s and 114.7 s, 0.52 and 0.44 DCU-hours, $0.033 and
 $0.028, so the slower one used as many DCU-hours as a 2.3 batch. About a quarter of a 3.0 batch is
 Serverless around the job: 48 to 60 s pending, and on the sample-only batches about 20 s from RUNNING
-to the Spark application's start and about 20 s after the job's last line. Why Dataproc runs this
-batch in local mode on 3.0 is not known; that is for Stage 4 to measure.
+to the Spark application's start and about 20 s after the job's last line. Why Dataproc ran this
+batch in local mode on 3.0, with one task thread, and what the batch runs as since: [Stage 4](#stage-4-local-mode-partitions-writes-size).
 
 **The first 3.0 batch** (`...e580908d-t1-8f7f6a`, the TTL stop) ran an earlier code version,
 `61bf231e63fc`, from before the one-file write and before the journey fix. Its computation took about
@@ -253,6 +261,215 @@ and `make spark-submit` at 13:40 UTC, while runtime 2.3 batches were created and
 enabled on 2026-09-28 at 14:02 UTC (`gcloud services enable cloudresourcemanager.googleapis.com
 --project <project>`, no charge), and all four 3.0 batches since were created and succeeded. A new
 project needs the same step before its first batch.
+
+## Stage 4: local mode, partitions, writes, size
+
+Stage 4's Spark experiments (6 to 9) changed one thing at a time in this job, each batch measured
+by the Stage 4 harness (`make bench-spark`, `bench/README.md`; every record in
+`bench/results/s4-e6-*.jsonl` to `s4-e9-*.jsonl`) and gated by the three attribution checks (`make
+attribution-checks`) and an exact diff of `fct_attribution` and `mart_attribution_daily` against the
+baseline copies (`make bench-diff`). Figures are median (min–max) of the runs; money is list price.
+
+### Experiment 6: why runtime 3.0 runs in local mode
+
+Google's runtime 3.0 page, the autoscaling page and the FAQ say nothing about batches running in
+local mode. What six small diagnostic batches showed (a PySpark file that prints the SparkContext and
+the Spark config, submitted with `batch.py`'s body; $0.039 in all):
+
+- **Dataproc sets it.** The image's `/etc/spark/conf/spark-defaults.conf` has `spark.master=dataproc`
+  (runtime 3.0's own cluster manager, which asks Dataproc's Resource Manager for executor nodes), and,
+  further down in the block written from the batch's properties, `spark.master=local`. The later line
+  wins; the driver's environment also has `MASTER=local`. The batch's `runtimeConfig.properties` does
+  not show it.
+- **`local` is one thread.** `defaultParallelism` was 1 on a 4-vCPU driver: the job ran every task one
+  after another on one of the four cores Dataproc bills for (4.8 DCUs: 4 vCPUs x 0.6 + 24 GiB x 0.1).
+- **Not this job's settings.** With Google's defaults (no executor properties) the batch was local too.
+  Runtime 3.0 creates the workload with a driver node only (Resource Manager `CreateWorkload`, one
+  `e2-custom-4-24576` node); runtime 2.3 started a standalone master and two workers before the job.
+- **The Batch API will not change it.** `spark.master` as a property was refused for every value tried
+  ("Invalid value for property spark.master": `dataproc`, `local[4]`, `local[*]`, `local[2]`,
+  `local-cluster[...]`, `spark://...`, `yarn`), and `spark.dataproc.scaling.version=2` is "unsupported".
+  The only value Google documents is `local`, for Spark Connect sessions ("3.0+ runtimes support Spark
+  single-node execution"), and a 2026-07-13 release note says the 3.0 runtime "now uses fewer executors".
+- **The job can choose.** A master set on the session builder wins over spark-defaults. With
+  `local[4]` in code the driver had 4 task threads; with `dataproc` it got executors (application id
+  `batch-<uuid>`): the driver asked the Resource Manager for a node pool of 2 executors about 70 s after
+  the batch started, and they were ready about 50 s later.
+
+**Measured** (two batches each, the same code and inputs, 2026-09-29; the control is the runtime's own
+`local`):
+
+| variant | wall s | running s | DCU-hours | list price | compute s | after compute s | mode |
+|---|---|---|---|---|---|---|---|
+| baseline (Stage 3 code, 3 runs) | 390 (380–517) | 338 (333–464) | 0.4527 (0.4472–0.6195) | $0.0287 | 170.6 | 123.2 | local, 1 thread |
+| control (`local`, runtime default) | 360 (358–361) | 313 | 0.4157 (0.4140–0.4174) | $0.0264 | 161.6 | 107.8 | local, 1 thread |
+| `--spark-master=local[4]` | 241 (229–252) | 190 (182–197) | 0.2528 (0.2412–0.2643) | $0.0160 | 87.3 | 58.3 | local, 4 threads |
+| `--spark-master=dataproc` | 287 (263–310) | 240 (222–258) | 0.7944 (0.7400–0.8489) | $0.0504 | 83.8 | 63.2 | driver + 2 executors, 8 task slots |
+
+"After compute" is the job's `write_seconds`, which since Stage 3 has covered everything after the
+checks: the summary's counts and then the two writes (from experiment 7 on the job also reports the
+two apart). Load jobs took 2.1 to 2.6 s each and never queued more than 0.3 s in these runs.
+
+**Kept: `local[4]`.** Against the control, a third less wall time (241 s against 360 s) and 39% less
+money ($0.0160 against $0.0264 a batch): the same node and the same 4.8 DCUs, for 190 s instead of
+313 s, because compute and the summary's counts ran four tasks at a time. The ranges do not overlap.
+Executors were **not** kept: the batch starts on the driver alone and the driver asks for the
+executor node pool only when its SparkContext starts, so the two executors arrive about a minute
+into the run; from then on the batch pays for three nodes (12 DCUs on average while running), and
+eight task slots finished the job no faster than four threads on one node (compute 83.8 s against
+87.3 s), so it cost 3.2 times as much as `local[4]` ($0.0504) and was slower (287 s). It also
+changed the results: `fct_attribution` was identical, but `mart_attribution_daily` differed from
+the baseline in 823 rows in the first run and 783 in the second, every one in the last bits of a
+DOUBLE sum (0.17705424071389861 against ...64; revenue 13.200000000000001 against 13.2), identical
+when rounded to 9 digits. The mart's sums depend on the order rows are added in, and with executors
+that order follows the order shuffle blocks arrive over the network. In local mode, with one thread
+or four, every run reproduced the baseline bit for bit (fingerprints and the exact diff), and the
+three attribution checks passed.
+
+`batch.py` now passes `--spark-master=local[N]`, N being the driver's cores, and says why; the DAG
+submits the same batch (DagBag test 18/18).
+
+### Experiment 7: 1000 shuffle partitions for 12 k touches
+
+**Why 987 partitions.** Dataproc's spark-defaults set `spark.sql.shuffle.partitions=1000`. Adaptive
+query execution is on and coalesces small shuffle partitions, but not the output of a cached plan
+(`spark.sql.optimizer.canChangeCachedPlanOutputPartitioning` is false by default in Spark 4.0.2): the
+three DataFrames the job caches (touches, fct_attribution, the mart) keep 1000 partitions (987 of them
+held rows in the first 3.0 batch's write), and every count, check and aggregation over them runs 1000 tasks. A local run on synthetic data of the sample's
+shape (guidance only, not a measurement: a laptop, 5,000 orders, 360,000 sessions) showed the pattern:
+compute 26.3 s with `local` and 1000 partitions, 9.9 s with `local[4]`, 2.1 s with `local[4]` and 4
+partitions, 2.2 s with `local[4]`, 1000 partitions and AQE allowed to coalesce cached plans (1 cached
+partition).
+
+**Step 1, a correctness change first: exact mart sums.** Changing the partitioning changes the order in
+which the mart's DOUBLE sums add their rows, so it can change the last bits of a mart row without any
+optimisation being wrong (experiment 6 showed it on executors). Before tuning partitions the mart now
+sums in DECIMAL(38,18) and casts back to DOUBLE (`models.EXACT_SUM`): each weight and revenue rounded to
+18 decimal places, far below a double's precision at these magnitudes, and an exact sum, the same
+whatever the order. A unit test adds 0.1, 0.2 and 0.3 in three orders (0.6000000000000001 or 0.6 as
+DOUBLE; 0.6 every time now), and another runs the job's models on random journeys split and shuffled
+three ways and requires identical rows. Against the baseline, `fct_attribution` is identical and
+1,030 of 5,556 mart rows differ, all in the last bits (1.6666666666666665 against 1.6666666666666663),
+identical when rounded to 9 digits; the three attribution checks pass (revenue conserved to the cent).
+This is the one documented difference from the baseline in the Spark tables, the same kind of change
+as Stage 4's exact money sums in BigQuery. Two batches (`s4-e7-exactmart`): 286 s (258–315), 0.3011
+DCU-hours (0.2757–0.3265), $0.0191; the compute phase, which does not touch the mart, took 100.6 and
+118.5 s against 81.5 and 93.1 s for the same code in experiment 6, so run-to-run noise at 1000
+partitions is about 30 s, and the cost of the decimal sums cannot be told from it here.
+
+**Step 2, the partitions.** On top of step 1, two batches each:
+
+| variant | wall s | running s | DCU-hours | list price | compute s | summary s | writes s |
+|---|---|---|---|---|---|---|---|
+| step 1 (1000 partitions) | 286 (258–315) | 225 (207–242) | 0.3011 (0.2757–0.3265) | $0.0191 | 109.5 (100.6–118.5) | 42.6 (39.5–45.7) | 24.8 (24.0–25.5) |
+| `spark.sql.shuffle.partitions=4` | 152 (147–158) | 104 (101–106) | 0.1369 (0.1333–0.1406) | $0.0087 | 31.1 (30.5–31.6) | 3.3 | 27.2 (25.6–28.8) |
+| `spark.sql.optimizer.canChangeCachedPlanOutputPartitioning=true` | 152 (147–157) | 104 (101–106) | 0.1362 (0.1330–0.1394) | $0.0086 | 31.0 (30.8–31.2) | 2.5 (2.4–2.6) | 27.1 (25.8–28.4) |
+
+Both cut the batch by almost half against step 1 (152 s against 286 s) and its cost by about 55%
+($0.0087 against $0.0191): compute fell from 110 s to 31 s and the summary's counts from 43 s to 3 s,
+because 12 k touches no longer run as 1000 tasks per step. The two settings were within noise of each
+other. **Kept: `spark.sql.shuffle.partitions=4`** (in `batch.py`'s properties, one partition per task
+thread): it is a documented setting, where the other is an optimizer switch whose own description warns
+that reading the cached data "may need an extra shuffle". Every batch of both variants wrote tables with
+the step 1 fingerprints: `fct_attribution` identical to the baseline, the mart identical to step 1's,
+the 1,030 last-bit rows included, the checks passing. So the partition count no longer changes a result.
+Repartitioning the inputs was not tried: each read arrives as one or two Storage Read API streams
+("Received 1 partitions" / "2 partitions" in the driver log), already fewer than the threads, and the
+shuffles after them are what the setting sizes.
+
+### Experiment 8: the write path
+
+With experiment 7 in place the two writes take about as long as the job's compute (24 to 29 s against
+about 31 s, `write_only_seconds` in six batches). Each write stages one Parquet file in the bucket, runs
+one load job (2.0 to 3.6 s in those batches, never queued more than 0.4 s), deletes the staged folder,
+and then the job sets the table and column descriptions (a `tables.get` and a `tables.update`, since a
+WRITE_TRUNCATE load replaces the schema and its descriptions).
+
+- **Direct write: not run.** The connector's direct method (Storage Write API) cannot create the
+  partitioned table (`partitionField` is "not supported at this moment by the direct write method")
+  and overwrites an existing table "using MERGE statement": a BigQuery query job the connector runs,
+  and the connector has no option to cap its bytes billed. That breaks two rules this project keeps
+  (every query job carries `maximum_bytes_billed`; the job runs no query jobs), so it was not run; the
+  staging and loading it would replace are part of the ~27 s the writes take.
+- **One file per table: kept.** With 4 shuffle partitions the DataFrames have at most 4 partitions;
+  `coalesce(1)` keeps one staged file and one load input per table, which is what the 987-file write
+  of the first 3.0 batch showed matters.
+- **Partitioned output tables: kept.** The load job's side, measured apart (`s4-e8-loads`): the current
+  table extracted to Parquet (free), then loaded with WRITE_TRUNCATE into a day-partitioned and an
+  unpartitioned scratch table, alternately, three times each. `fct_attribution`: 2.75 s (2.74–15.02)
+  partitioned, 2.91 s (1.98–6.12) not, within noise. `mart_attribution_daily`: 2.47 s (2.46–2.77)
+  partitioned, 1.61 s (1.26–1.67) not, about 0.9 s a batch. Partitioning prunes nothing at this size
+  (BigQuery bills at least 10 MB per table read), so it is kept for the layout's sake, like Stage 2's
+  facts. Changing it would also need both tables dropped first: a WRITE_TRUNCATE load job without a
+  partitioning spec into a partitioned table succeeds and leaves the table partitioned (checked on a
+  scratch copy of the mart).
+- **Both tables at once: not kept.** The job wrote the two tables from two threads (a
+  `--write-concurrency=2` argument, now removed), three batches because the first two disagreed
+  (`s4-e8-concurrent`): the writes took 33.1, 22.4 and 17.7 s against 24.0 to 28.8 s one after the
+  other (median 22.4 against 25.7 over six sequential batches), and the first run's
+  `fct_attribution` load ran 22.1 s inside BigQuery without queueing (0.2 s), a tail the load probe
+  above also hit once (15.0 s). The batches cost $0.0099, $0.0098 and $0.0079 against $0.0085 to
+  $0.0089 sequentially: the compute phase moved more between runs (31.0 to 38.6 s) than the writes
+  saved. The saving is inside the spread of either, worth at most about 5 s x 4.8 DCUs ($0.0004) a
+  batch, and costs a second thread writing next to the first; the job still writes one table after
+  the other.
+
+### Experiment 9: size
+
+A DCU is 0.6 per vCPU plus 0.1 per GiB of the node's memory (up to 8 GiB per vCPU). The default driver,
+4 cores with `spark.driver.memory` 16000m and PySpark's 40% overhead (6400m), gets an
+`e2-custom-4-24576` node: 2.4 + 2.4 = 4.8 DCUs, the average of every local-mode batch here. What can
+move, within Serverless's minimums:
+
+- **Cores**: 4 is the smallest driver (4, 8 or 16). Not tried larger: after experiment 7 the job's own
+  compute is about 30 s of a ~150 s batch, and Serverless's fixed part (about 50 s pending, about 40 s
+  of the running time before the application starts and after it ends) does not shrink with cores.
+- **Executors and dynamic allocation**: nothing to size in local mode; no executor is requested. The
+  executor settings stay in `batch.py` for anyone who switches the master to `dataproc`.
+- **Disk**: 250 GiB is the minimum per node, already set; shuffle storage is billed on the node's disks
+  (250 GiB plus the 50 GiB boot disk: the 300 GB the batches report), about 5% of the price.
+- **Memory**: the API wants 1024m to 7424m per core in total (it refused 2048m + 1024m with that
+  message). `spark.driver.memory=2867m` with `spark.driver.memoryOverhead=1229m` is the minimum, 4 GiB
+  in all: the node becomes `e2-custom-4-5888` (about 1.75 GiB above the driver's 4 GiB) and the rate
+  2.4 + 0.575 = 2.975 DCUs, 38% less per second.
+
+**Measured** (`s4-e9-driver4g`, on experiments 6 and 7, the job's final code): 152 s (150–155),
+running 104 s (101–106), 0.0868 DCU-hours (0.0849–0.0888) at 3.0 DCUs on average, **$0.0057** a batch
+($0.0056–$0.0058), against 152 s, 0.1369 DCU-hours and $0.0087 with the default memory: the same time,
+37% fewer DCU-hours and 34% less money (the shuffle storage, billed on the disks, did not shrink). Compute (30.5, 32.2 s), the summary (3.5, 4.2 s) and the writes (26.8, 27.0 s) took as
+long as with 24 GiB; the fingerprints were step 1's and the checks passed. **Kept**: the two memory
+properties are in `batch.py`, and a test holds them at the minimum for the driver's cores.
+
+### Where the batch ended up
+
+| | baseline (Stage 3 code) | Stage 4 |
+|---|---|---|
+| master, threads | `local`, 1 (Dataproc's choice) | `local[4]` (`--spark-master`) |
+| shuffle partitions | 1000 (Dataproc's default) | 4 |
+| driver memory | 16000m + 6400m (4.8 DCUs) | 2867m + 1229m (3.0 DCUs) |
+| mart sums | DOUBLE, order-dependent | DECIMAL(38,18), exact |
+| batch wall time | 390 s (380–517) | 152 s (150–155) |
+| running (billed) time | 338 s (333–464) | 104 s (101–106) |
+| DCU-hours | 0.4527 (0.4472–0.6195) | 0.0868 (0.0849–0.0888) |
+| list price a batch | $0.0287 | $0.0057 (-80%) |
+| a daily batch, x30 | $0.86 a month | $0.17 a month |
+| job: compute / summary / writes | 170.6 s / about 95 s / about 28 s | 31 s / 4 s / 27 s |
+
+The final measurements, with every Stage 4 change in (`s4-end-spark`, two batches, 2026-09-29): **144 s**
+(134–154), 98 s running, **0.0818 DCU-hours** (0.0764–0.0872), **$0.0054** a batch; the two Airflow runs'
+batches took 145 s ($0.0054) and 183 s ($0.0068, one slow compute phase), every one with the same output
+fingerprints ([STAGE4-RESULTS.md](../STAGE4-RESULTS.md#the-final-state)). Against the baseline that is −63% wall
+time and −82% DCU-hours; against the same-day control (the baseline code rerun hours later: 360 s, 0.4157
+DCU-hours), −60% and −80%.
+
+What is left is mostly Serverless's own: about 50 s pending (not billed), and of the ~104 s billed about
+40 s before the Spark application starts and after it ends, which no Spark setting reaches. The
+outputs: `fct_attribution` identical to the baseline row for row; `mart_attribution_daily` identical
+but for the last bits of 1,030 rows (exact sums), equal when rounded to 9 digits; the three
+attribution checks pass, and `make spark-report`'s independent SQL rebuild matches all 73,962 rows
+(max weight difference 2.2e-16). Every Stage 4 batch kept the 30-minute TTL and the labels; none was
+left running. Spark spend for experiments 6 to 9: 17 measured batches and 6 diagnostic ones, about $0.34 at
+list price, plus about 2 GiB of harness and check queries (about $0.01).
 
 ## Limitations
 

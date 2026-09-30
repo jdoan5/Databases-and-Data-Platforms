@@ -10,9 +10,11 @@ numbers go wrong.
 
 This folder holds Stage 1 (the tagged site, the tagging plan, and the contract),
 Stage 2 (a BigQuery pipeline that stitches and enriches GA4 export data, and a traffic
-simulator for the site) and Stage 3 (multi-touch attribution in PySpark on Dataproc
-Serverless, and the whole pipeline as one Airflow DAG). Stage 2 is
-[below](#stage-2-stitch-and-enrich-in-bigquery), then [Stage 3](#stage-3-attribution-in-spark-orchestrated-by-airflow).
+simulator for the site), Stage 3 (multi-touch attribution in PySpark on Dataproc
+Serverless, and the whole pipeline as one Airflow DAG) and Stage 4 (the same pipeline made
+cheaper and faster, one measured change at a time). Stage 2 is
+[below](#stage-2-stitch-and-enrich-in-bigquery), then [Stage 3](#stage-3-attribution-in-spark-orchestrated-by-airflow)
+and [Stage 4](#stage-4-cheaper-and-faster-measured).
 
 ![Order confirmation page with the Tag Inspector open on the purchase event](docs/images/confirmation-purchase.png)
 
@@ -29,7 +31,7 @@ own fields. More screenshots [below](#screenshots).*
 | 1 | Tag the site | React storefront, [tagging plan](docs/tagging-plan.md), [JSON Schema contract](tagging/events.schema.json), runtime validation with a Tag Inspector, unit and end-to-end tests | Done, pending review |
 | 2 | Stitch and enrich in BigQuery | Site events unioned with the GA4 Merchandise Store sample dataset; anonymous sessions stitched to signed-in users on `user_id`; orders deduplicated, enriched with catalog cost; campaign and funnel marts; a seeded traffic simulator | Built and checked on the sample and on the site's own GA4 export (one day of simulated traffic, 1,433 events; [below](#the-sites-own-export)) |
 | 3 | PySpark on Dataproc + Airflow | Multi-touch attribution: every order credited across the buyer's 30-day journey under six models, in PySpark on Dataproc Serverless; the Stage 2 SQL build, its checks, the Spark job and checks on its output as one daily Airflow DAG, run locally in Docker | Built and run end to end on the sample and the site's export, on the pinned Dataproc runtime 3.0, with cross-device journeys from the site ([below](#stage-3-attribution-in-spark-orchestrated-by-airflow)) |
-| 4 | Cost and run-time optimization, measured | Before/after numbers for each change, including the ones that don't help | Not started |
+| 4 | Cost and run-time optimization, measured | Nine experiments, each kept or reverted on its numbers: a daily incremental BigQuery build (one script, one transaction, identical to a full build on every step of its equivalence test), narrower reads, a measured table layout, a storage recommendation; the Spark batch out of one-thread local mode, down to 4 partitions and the smallest driver; the harness and every run's record in [`bench/results/`](bench/results/) | Done: a daily DAG run 249 s and $0.019 against 480 s and $0.081, outputs identical but for two documented last-bit sums ([below](#stage-4-cheaper-and-faster-measured), [STAGE4-RESULTS.md](STAGE4-RESULTS.md)) |
 | 5 | Tag QA and KPI alerting | The Playwright funnel grown into full tag QA against the same schema; alerts on funnel and revenue KPIs | Not started |
 | 6 | Roadmap | What would change for a real store | Not started |
 
@@ -82,6 +84,7 @@ locally only until Stage 5.
 ```
 tagline/
   README.md
+  STAGE4-RESULTS.md              Stage 4: every experiment, its numbers, kept or reverted, and the final runs
   Makefile                       make help lists every target
   .env.example                   copy to .env (gitignored): the Google Cloud project id, the site's GA4 dataset, the cost guard;
                                  for Stage 3 the Dataproc region, bucket and service account
@@ -106,6 +109,7 @@ tagline/
                                  tagline_spark/: the one batch definition make and the DAG submit; spark/README.md
   airflow/                       Stage 3: docker-compose for Airflow 3, the tagline_daily DAG, its DagBag test
     dags/tagline_daily.py        the DAG; helpers in dags/tagline_airflow/, the attribution checks in its sql/
+  bench/                         Stage 4: the measurement harness (make bench-*), its tests, and the results log in results/
 ```
 
 The store is "Tagline Supply": 20 products in five categories (Apparel,
@@ -278,9 +282,10 @@ Node 24 or 22.22+ and Google Chrome for the simulator.
 cd tagline
 cp .env.example .env         # set TAGLINE_GCP_PROJECT; TAGLINE_GA4_DATASET once the site's export exists
 make setup                   # pipeline/.venv, npm ci in site/ and simulator/
-make test                    # pytest (54) + simulator unit tests (26): no BigQuery, no browser
+make test                    # pytest (84) + simulator unit tests (26): no BigQuery, no browser
 make reference               # tagline_raw.products and tagline_raw.campaign_costs
 make build                   # every model, then every check; exits non-zero if a check fails
+make build-incremental       # the daily path (Stage 4): only new or changed export days, one script, then the checks
 make numbers                 # the reconciled numbers below
 make fixture                 # the site-export path, proven on temporary fake export tables (below)
 make simulate                # 50 synthetic shoppers in Chrome, dry run: no hits sent to Google
@@ -353,10 +358,10 @@ total                              17 jobs    8.57 GiB    8.62 GiB  1,713,884   
 table is Stage 4's baseline. With the site's export in (the build of 2026-09-28), the same 17 jobs
 processed 8.57 GiB and billed 8.62 GiB, and all nine checks passed: the site's one day (1,433
 rows; 10 MiB billed, BigQuery's minimum per table, when queried on its own) does not move the
-rounded totals. Each table is partitioned by its date and some are clustered,
-but at this volume none of that prunes anything (measured; see
-[data-model.md](docs/data-model.md#tables-grain-key-layout)): the layout is a placeholder
-for Stage 4 to decide.
+rounded totals. Each table is partitioned by its date and some are clustered. Stage 4 measured
+the layout and kept it but for one clustering, and made the build cheaper: a full build now bills
+8.05 GiB, and the daily incremental build 2.12 GiB ([Stage 4](#stage-4-cheaper-and-faster-measured),
+[data-model.md](docs/data-model.md#tables-grain-key-layout)).
 
 ### The site's own export
 
@@ -633,7 +638,8 @@ here, though: the same rules as one BigQuery query, with one join, a few window 
 of the six models, are about the same size (`spark/sql/independent_rebuild.sql`, which
 `make spark-report` runs to check the job row by row). At this volume BigQuery could do it all;
 the job is in Spark for those tests and for running Spark on Dataproc, not because the data needs a cluster.
-That choice has a measured price: the Spark task is about 6.5 of a full run's 8 minutes and $0.028 of
+That choice has a measured price (Stage 3's; [Stage 4](#stage-4-cheaper-and-faster-measured) cut the batch to about
+2.5 minutes and $0.005): the Spark task is about 6.5 of a full run's 8 minutes and $0.028 of
 its $0.081. About a quarter of the batch is Serverless starting and stopping, and the job computes for
 about 3 minutes and writes for about 2 (batch by batch in [spark/README.md](spark/README.md#measured)).
 
@@ -655,7 +661,7 @@ the project (runtime 3.0 batches fail at creation without it; see the limitation
 ```bash
 cd tagline
 make spark-venv          # spark/.venv: pyspark pinned to the runtime's Spark (needs a Java 21 for the tests)
-make spark-test          # the attribution functions, on a local SparkSession (41 tests)
+make spark-test          # the attribution functions, on a local SparkSession (46 tests)
 make spark-submit        # LIVE: upload the job and run it once as a Dataproc Serverless batch; wall time, DCUs, cost
 make spark-report        # channel credit by model, last click against Stage 2, the SQL rebuild (3 small queries)
 make airflow-up          # Airflow 3 in Docker, http://localhost:8080; tagline_daily is created paused
@@ -669,7 +675,10 @@ The DAG runs the job's code version hashed from `spark/`; after changing the job
 
 Unpausing `tagline_daily` starts the most recent 10:00 UTC run at once, Spark batch included, and
 then one run a day; to run only the Stage 2 part, leave it paused and use
-`make airflow-test AIRFLOW_CONF='{"attribution": false}'`.
+`make airflow-test AIRFLOW_CONF='{"attribution": false}'`. Since Stage 4 a run brings the Stage 2 tables up
+to date with the daily incremental build (only the export days that are new or may have changed);
+`AIRFLOW_CONF='{"full_refresh": true}'` rebuilds every table from every day instead
+([docs/orchestration.md](docs/orchestration.md)).
 
 ### Results on the sample
 
@@ -833,6 +842,67 @@ Details and the per-task breakdown: [docs/orchestration.md](docs/orchestration.m
   run is red when that happens (details in [docs/orchestration.md](docs/orchestration.md#limitations)).
 - **Local Airflow runs only while the machine is on**, and a failed run is red in the Airflow UI
   and nowhere else until Stage 5 adds alerting.
+
+---
+
+## Stage 4: cheaper and faster, measured
+
+Stage 4 changed one thing at a time and kept or reverted it on the numbers, the method of
+[query-plan-forensics](../query-plan-forensics/README.md). Every number comes from one harness,
+[`bench/`](bench/README.md): it runs a named variant (a build command, or the attribution batch with overrides),
+reads each BigQuery job's bytes billed, slot-ms and seconds from `INFORMATION_SCHEMA.JOBS_BY_PROJECT`, each
+batch's DCU and shuffle usage and the job's own timings, and table storage, and appends one record per run to
+`bench/results/<variant>.jsonl`. BigQuery variants ran 3 times, Spark variants at least twice; figures are
+median (min–max) at list price. The full write-up, with every experiment and every revert:
+**[STAGE4-RESULTS.md](STAGE4-RESULTS.md)**.
+
+| a daily run | Stage 3 | Stage 4 | |
+|---|--:|--:|---|
+| BigQuery billed | 8.624 GiB | **2.123 GiB** (−75%) | a daily incremental build instead of a full rebuild, on narrower reads |
+| BigQuery slot-ms | 1.71 M | **0.65 M** (−62%) | |
+| Spark batch | 390 s, 0.453 DCU-hours | **144 s, 0.082 DCU-hours** (−63%, −82%; −60%, −80% against a same-day control) | `local[4]` instead of one thread, 4 shuffle partitions instead of 1000, a 4 GiB driver |
+| list price | $0.0814, $2.44 a month | **$0.0183, $0.55 a month** (−77%) | |
+| the whole DAG (`airflow dags test`) | 480 s, $0.081 | **249 s, $0.019** | |
+
+- **Kept:** the daily incremental build (E1: the export days that are new or may have changed, applied to every
+  table in one BigQuery script and one transaction; a day is re-read when its export table no longer matches what
+  was recorded when it was staged, so a late GA4 update, a restatement or a daily table replacing the streaming one
+  is picked up however old the day; `make stage4-equivalence` shows it leaves every table exactly as a full build
+  would on every step tested: a sample day, the site's day, and seven fixture steps that each exercise a named
+  path, reach-back of a sign-in, collisions both ways, repeats, a vanished session, a restated day and a run with
+  nothing new), narrow reads (E2, −6.8% on a full build), exact money sums (a correctness change, E2b
+  and E7), daily partitions and `stg_events`' clustering (E4, measured), `stg_items` unclustered (E4), and for Spark
+  `local[4]` (E6), `spark.sql.shuffle.partitions=4` (E7) and the minimum driver memory (E9).
+- **Reverted or not kept:** removing `stg_events`' and `fct_sessions`' clustering, a slim shared intermediate for
+  full builds, Spark executors (3.2× the cost, slower, and results that depended on network order), the
+  connector's direct write (it would run an uncapped MERGE), unpartitioned output tables, concurrent writes.
+- **Not faster, and kept anyway:** neither a full rebuild nor a daily run's BigQuery part is faster than the
+  baseline's full rebuild (85.3 s). Over the six runs of each on the final code they are somewhat slower, 97.2 s
+  (+14%) and 95.7 s (+12%), with ranges overlapping the baseline's; the two new tables do not account for it (the
+  models' per-job medians add up to about 1 s more), and the cause was not isolated. The daily script's 27
+  statements run one after another.
+- **Outputs:** identical to Stage 3's row for row, except two sums made exact on purpose (1 row of
+  `mart_campaign_daily`, 1,030 rows of `mart_attribution_daily`, each in the last bits of a float).
+- **Storage** (E5): about $0.07 a month under logical billing, inside the free 10 GiB. Recommendation for the owner:
+  keep logical billing and the 7-day time-travel window for now; physical billing would be about 5× cheaper on the
+  incremental path if storage ever passes the free tier. No billing model was changed.
+
+```bash
+make bench-test                                            # the harness's tests (no Google Cloud)
+make bench-build VARIANT=<name> RUNS=3                     # LIVE: make build x3 (BUILD_CMD="make build-incremental" for the daily path)
+make bench-spark VARIANT=<name> RUNS=2                     # LIVE: the attribution batch x2 (SPARK_PROPS=..., JOB_ARGS=...)
+make bench-storage VARIANT=<name>                          # storage per table, monthly cost under both billing models
+make bench-diff VARIANT=<name>                             # outputs identical to a baseline copy?
+make bench-report                                          # Markdown summary of bench/results/
+make stage4-equivalence                                    # LIVE: the daily incremental build against a full build (~$0.26)
+make attribution-checks                                    # the DAG's three attribution checks, without Airflow
+```
+
+The baseline is in [`bench/results/baseline.md`](bench/results/baseline.md), the final runs in
+[`bench/results/s4-final.md`](bench/results/s4-final.md), the Spark experiments in
+[`bench/results/s4-spark.md`](bench/results/s4-spark.md). `bench-diff` compared against copies of the baseline's
+output in `tagline_s4_baseline`, deleted at the end of the stage; to use it again, rebuild a baseline with
+`make bench-snapshot VARIANT=<name>` first.
 
 ---
 

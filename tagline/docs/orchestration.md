@@ -1,5 +1,20 @@
 # Orchestration: Tagline Stage 3
 
+> **Status, 2026-09-30 (Stage 5).** The DAG gained the two monitoring marts (built by the same incremental script, or by
+> their own model tasks with `full_refresh`), two more checks, and two alert tasks after the checks, `detect_anomalies`
+> and `notify_alerts`, with a run parameter `fail_on_alert` (default `false`). A normal daily run
+> (`make airflow-test AIRFLOW_DATE=2026-09-28`) at 13:57 UTC was green end to end in **378 s and about $0.022**
+> ([measured below](#measured)); no alert was news for the site's day, so nothing was sent. The Stage 5 integration
+> check ran it again with every change of the stage in: green at 14:55 UTC in **383 s and about $0.022**, after two
+> attempts at 14:23 and 14:34 in which Dataproc Serverless could not start the batch for lack of capacity in the region
+> (four batches, none reached RUNNING or reported usage; everything before the Spark task, the Stage 5 tasks included, had
+> succeeded, and `run_summary` failed both runs as designed). That made six Dataproc batches for Stage 5 against the
+> spec's cap of one (two ran, $0.007 each; the four that failed on capacity reported no usage): the DAG was rerun after
+> the capacity errors instead of stopping. After review, the two alert tasks run once the checks are done, passed or
+> not, and the message names the run's failed tasks; `detect_anomalies` takes the export day as the last day data is
+> due (a missing day is a `no_data` alert); `fail_on_alert` counts only the alerts the run sends. That DAG ran green at
+> 16:06 UTC with `{"attribution": false}` (no batch) in **221 s**, 2.43 GiB ([measured below](#measured)).
+>
 > **Status, 2026-09-29 (Stage 4).** With every Stage 4 change in, the DAG ran end to end twice, both
 > green: a normal daily run at 05:48 UTC (the incremental build of the site's newest export days, the
 > nine checks, the attribution batch in `local[4]` and its three checks) in **249 s and about $0.019**,
@@ -35,9 +50,13 @@ build_mode ─┬─► stage2_incremental ────────────�
                             ├─► int_purchases ──────────────────► fct_orders ──┴─► fct_order_items ──┤
                             └─► int_device_days ─► int_identity ─► fct_sessions ─► fct_orders         │
                                                                    fct_sessions ─► mart_campaign_daily┤
-                                                                   fct_sessions ─► mart_funnel_daily ─┴─► stage2_checks (9)
-stage2_checks ─► attribution_enabled ─► spark_attribution ─► attribution_checks (3) ─► run_summary
+                                                                   fct_sessions ─► mart_funnel_daily ─┤
+                                                     fct_sessions, fct_orders ─► mart_kpi_daily ──────┤   (Stage 5)
+                                                                   fct_sessions ─► mart_tag_health_daily ┴─► stage2_checks (11)
+stage2_checks ─┬─► detect_anomalies ─► notify_alerts ──────────────────────────────┬─► run_summary   (Stage 5)
+               └─► attribution_enabled ─► spark_attribution ─► attribution_checks (3) ┘
 ```
+(`stg_events` also feeds both monitoring marts.)
 
 `build_mode` picks one branch and Airflow skips the other: `stage2_incremental` (the default) or the model
 tasks (`{"full_refresh": true}`); the checks run after whichever ran. On the full-refresh branch
@@ -54,12 +73,14 @@ that builds after it. The DagBag test compares the result with the lineage in
 | `prepare_sources` | what `make build` does first: create the three datasets if missing, list the site export's tables | runs when the sensor succeeded **or** was skipped (`none_failed`) |
 | `build_mode` | branch on the run parameter `full_refresh` (default false) | |
 | `stage2_incremental` | the default: `make build-incremental`'s one BigQuery script, in one transaction: the export days that are new or may have changed (the 4 days up to the site's newest daily table, any day whose export table no longer matches what was recorded in `staged_export_days` when it was staged, and any day not loaded yet) applied to every table and to that record ([data-model.md](data-model.md#incremental-builds-stage-4)) | `maximumBytesBilled` on every statement; a failure leaves every table as it was, so a retry starts from the same tables; with no tables yet it fails at once, without retrying: run with `{"full_refresh": true}` |
-| 10 model tasks | with `full_refresh`: one `CREATE OR REPLACE TABLE` each, rendered by the Stage 2 package, then the table and column descriptions and the row count, as `make build` does; `stg_events` also takes the site export's metadata before its job and replaces `staged_export_days` after it | `maximumBytesBilled` on every job |
-| `stage2_checks` (9) | Stage 2's checks, in parallel, after whichever build ran (`none_failed_min_one_success`); each returns no rows when it passes | a failing check fails its task **without retrying** (the same query on the same tables cannot pass) |
+| 12 model tasks | with `full_refresh`: one `CREATE OR REPLACE TABLE` each, rendered by the Stage 2 package, then the table and column descriptions and the row count, as `make build` does; `stg_events` also takes the site export's metadata before its job and replaces `staged_export_days` after it | `maximumBytesBilled` on every job |
+| `stage2_checks` (11) | Stage 2's checks (and Stage 5's checks 10 and 11 on the monitoring marts), in parallel, after whichever build ran (`none_failed_min_one_success`); each returns no rows when it passes | a failing check fails its task **without retrying** (the same query on the same tables cannot pass) |
+| `detect_anomalies` (Stage 5) | the anomaly rules over the monitoring marts; `tagline_marts.kpi_alerts` replaced ([monitoring.md](monitoring.md)); the export day the run waited for is the last day the site's data is due, so a day missing up to it (the sensor gave up, skipped) is a `no_data` alert | runs once every check is done, passed or not (`all_done`); no query job (table-data reads, a load job) |
+| `notify_alerts` (Stage 5) | the alerts that are news on the export day the run waited for and not sent yet, headed by the run's tasks that have failed so far (a check, the build, `detect_anomalies`): POSTed to `TAGLINE_ALERT_WEBHOOK_URL`, else logged; marked sent | `all_done`, like `detect_anomalies`; the message is logged before the POST; a failed POST raises and marks nothing (two retries, then the task and the run fail, `fail_on_alert` or not); with `{"fail_on_alert": true}` it fails after sending when this run sent any alert |
 | `attribution_enabled` | short-circuit on the run parameter `attribution` (default true) | `{"attribution": false}` rebuilds and checks Stage 2 only |
 | `spark_attribution` | `AttributionBatchOperator` (the provider's `DataprocCreateBatchOperator`, plus a cancel, below): the attribution job on Dataproc Serverless. The batch is `tagline/spark/tagline_spark/batch.py`, the one definition `make spark-submit` uses too; it runs the code version hashed from the mounted `spark/` sources, so `make spark-upload` must have put that version in the bucket | batch TTL 30 min; task timeout 45 min; a try that ends before its batch does (timeout, any error while waiting, Ctrl-C) cancels the batch; one retry, as a new batch |
 | `attribution_checks` (3) | weights sum to 1 per order and model (and every order has all six models); attributed orders and revenue per model = Stage 2's real orders; every order's `last_click` credit is on its own session (`fct_orders.session_key`), and `last_click` orders and revenue by channel = Stage 2's, with no adjustment | `maximumBytesBilled`; fail without retry |
-| `run_summary` | the Stage 2 cost table for every BigQuery job of the run, and the batch's final state, wall time, DCU and shuffle usage and list price (re-reading the batch, for at most 3 min, until Dataproc reports the usage) | runs whatever happened (`all_done`); **fails the run if any task failed** (see below) |
+| `run_summary` | the Stage 2 cost table for every BigQuery job of the run, and the batch's final state, wall time, DCU and shuffle usage and list price (re-reading the batch, for at most 3 min, until Dataproc reports the usage); since Stage 5 also the alerts line (news, sent, delivery, critical) | runs whatever happened (`all_done`); **fails the run if any task failed** (see below) |
 
 The Stage 2 checks are the files in `pipeline/sql/checks/`; the three attribution checks are
 `airflow/dags/tagline_airflow/sql/attribution_checks/`, written in the same convention (`{{ project }}`,
@@ -122,7 +143,8 @@ make airflow-orphans   # after a crash: Dataproc batches the DAG left running (C
   (3.2 GB for Airflow).
 - **Mounts**: the DAGs, `pipeline/` (the Stage 2 package and its SQL) and `spark/` (the batch
   definition in `tagline_spark`, and the job's sources it hashes into the code version), both
-  read-only and on `PYTHONPATH`; the DagBag test; and the task logs (`airflow/logs/`, gitignored).
+  read-only and on `PYTHONPATH`; `tagging/` read-only beside them (Stage 5: the tag health SQL is generated from
+  the contract when a task renders it); the DagBag test; and the task logs (`airflow/logs/`, gitignored).
 - **Configuration**: `tagline/.env` goes into the containers as environment variables (`env_file`),
   and the DAG reads it through the Stage 2 package's own `load_config`, so the DAG and `make build`
   cannot disagree about the project, the GA4 dataset or the cost guard.
@@ -253,6 +275,65 @@ which runs independent tasks (`stg_items` and `int_identity`, the nine checks) s
 ---
 
 ## Measured
+
+**Stage 5, a normal daily run** (`make airflow-test AIRFLOW_DATE=2026-09-28`, run
+`manual__2026-09-30T13:57:00.627252+00:00`, the same Spark code version as Stage 4's): the sensor found
+`events_20260927`, `stage2_incremental` ran (the site's day, by the lookback; step 10 recomputed the two monitoring
+marts' rows for 2026-09-27), the 11 Stage 2 checks passed, `detect_anomalies` wrote 114 alerts to `kpi_alerts` (all
+the GA4 sample's, from the backtest's days) and `notify_alerts` found none that were news on 2026-09-27, so it sent
+nothing; the batch and its three checks passed. 23 tasks succeeded, 13 were skipped. **378 s** and about **$0.022**:
+
+| part | tasks | wall | what it used | list price |
+|---|---|---|---|---|
+| branch, sensor, `prepare_sources`, `build_mode` | 5 (1 skipped) | 3.3 s | the window's metadata query (10 MiB) | $0.0001 |
+| `stage2_incremental` | 1 (12 skipped) | 133.8 s | one script, 33 statements in one transaction: 747 MiB billed; step 10's five statements (the day list and the two marts' deletes and inserts) 110 MiB and 18.0 s. One `fct_orders` MERGE took 22.9 s (2.4 to 4.2 s in the other two runs that day); Stage 4's runs took 66 s and 85 s | $0.0043 |
+| Stage 2 checks | 11 | 41.8 s | 11 query jobs, 1,734 MiB (checks 10 and 11: 185 MiB) | $0.0103 |
+| `detect_anomalies`, `notify_alerts` | 2 | 15.1 s | table-data reads (93 + 8,655 mart rows), two load jobs: nothing billed | $0 |
+| `attribution_enabled`, `spark_attribution` | 2 | 175.5 s | batch `tagline-attr-20260930-c9c47ed0-t1-c5a2a8`: 174 s, 0.102 DCU-hours, 10.3 GB-hours shuffle storage | $0.0067 |
+| attribution checks | 3 | 8.2 s | 3 query jobs, 80 MiB | $0.0005 |
+| `run_summary` | 1 | 0.2 s | the cost table, the batch, the alerts line | |
+| **total** | **36 (13 skipped)** | **378 s** | **49 query jobs (18 top-level), 2.51 GiB billed (2,695,888,896 bytes); 0.102 DCU-hours** | **$0.022** |
+
+Against Stage 4's daily run (249 s, 2.21 GiB, $0.019): 0.30 GiB more BigQuery (the marts' step and two checks), 15 s of
+alert tasks, a batch 29 s longer (174 s against 145 s, the same code), and an incremental task twice as long for
+reasons outside Stage 5's statements (above). One run; no timing claim rests on it. The jobs agree with
+`region-us.INFORMATION_SCHEMA.JOBS_BY_PROJECT` (18 top-level jobs labelled `orchestrator=airflow`, 2.51 GiB).
+`make airflow-orphans` afterwards: no batch left running.
+
+**Stage 5 integration** (the same command, after both Stage 5 halves were in). Three runs:
+
+| run (UTC) | result | wall | BigQuery | Dataproc |
+|---|---|---|---|---|
+| `manual__2026-09-30T14:23:51` | red: `spark_attribution` failed twice, `Failed to create main node pool: The requested location does not have enough resources available to fulfill the request at this time`; the 3 attribution checks `upstream_failed`, `run_summary` failed the run | 443 s | 46 jobs, 2.43 GiB | 2 batches, never RUNNING, no usage reported |
+| `manual__2026-09-30T14:34:14` | red, the same error on both tries | 445 s | 46 jobs, 2.43 GiB | 2 batches, never RUNNING, no usage reported |
+| `manual__2026-09-30T14:55:08` | **green**: 23 tasks succeeded and 13 skipped, `run_summary` too | **383 s** | **49 jobs, 2.51 GiB** ($0.015) | batch `tagline-attr-20260930-549849fd-t1-d51531`: 188 s (51 s pending), 0.114 DCU-hours, 11.5 GB-hours shuffle storage ($0.007) |
+
+In all three the sensor found `events_20260927`, `stage2_incremental` succeeded (126 s in the green run), all 11 checks
+passed (32 s), `detect_anomalies` wrote the same 114 alerts (16 s) and `notify_alerts` found nothing that was news on
+2026-09-27 (2 s); `run_summary` printed `Alerts (Stage 5) as of 2026-09-27: 0 news, 0 sent by this run (delivery:
+none), 0 critical` each time. The capacity error is Google's, not the DAG's: the batch definition did not change, and
+the third run, 14 minutes after the last failure, created the same batch without trouble. The task's one retry did its
+job but could not outlast the shortage; the red runs are what the DAG should do then. No batch was left pending or
+running (`make airflow-orphans`), and `make airflow-down` removed every container and the network.
+
+**Stage 5, after review** (`make airflow-test AIRFLOW_DATE=2026-09-28 AIRFLOW_CONF='{"attribution": false}'`, run
+`manual__2026-09-30T16:06:58.145323+00:00`, with the review's DAG changes: the alert tasks' `all_done`, the export day
+passed to `detect_anomalies`, the failed-task list in `notify_alerts`). **Green**: 19 tasks succeeded and 17 were
+skipped (the 12 model tasks and `no_ga4_export` by the branches; `spark_attribution` and the 3 attribution checks by
+`{"attribution": false}`), in **221 s** (16:06:58 to 16:10:39). The sensor found `events_20260927`,
+`stage2_incremental` rebuilt the site's day, the 11 checks passed, `detect_anomalies` treated 2026-09-27 as due, found
+it (no `no_data`) and wrote the same 114 alerts; `notify_alerts` read the run's task states without trouble (no failed
+task), found nothing new on 2026-09-27 and sent nothing. BigQuery: 46 jobs, 2.43 GiB billed (about $0.015). No Dataproc
+batch was created: attribution was turned off on purpose, after Stage 5 had already used more batches than its cap
+(above). `make airflow-orphans` afterwards: none pending or running; `make airflow-down` removed every container and
+the network.
+
+One statement of the incremental script took about 21 s in three of the integration's four incremental runs (the
+green run's `_sessions_touched`, the first red run's `stg_events` MERGE, a `mart_tag_health_daily` DELETE in `make
+build-incremental`), as a `fct_orders` MERGE did in the 13:57 run above, with a few thousand slot-ms, where the same
+statements usually take 1 to 4 s. A
+different table each time, so it looks like waiting inside BigQuery rather than work; it is why the incremental task
+is slower than Stage 4's. Not investigated further.
 
 Stage 4's two runs first (2026-09-29), then Stage 3's (2026-09-28: the GA4 sample only, then with the
 site's own export). Prices are Google's list prices, read on 2026-09-28:
@@ -481,7 +562,8 @@ The DAG file and `tagline_airflow/` would run unchanged. What changes is everyth
 3. **Code.** Upload `dags/tagline_daily.py`, `dags/.airflowignore` and `dags/tagline_airflow/` to the
    environment bucket's `dags/` folder, and the Stage 2 package with its SQL beside it
    (`pipeline/tagline_pipeline/` and `pipeline/sql/` side by side: the package finds `sql/` next to
-   itself), adding both folders to `.airflowignore`. The package's only dependency,
+   itself, and since Stage 5 `pipeline/monitoring.toml` beside them and `tagging/events.schema.json` one level up, the
+   contract the tag health SQL is generated from), adding those folders to `.airflowignore`. The package's only dependency,
    `google-cloud-bigquery`, is already in Composer's images. The DAG also imports the batch definition,
    `tagline_spark`, and hashes the job's sources into the code version at parse time, so upload
    `spark/main.py`, `spark/attribution/` and `spark/tagline_spark/` together, in the same layout, to a
@@ -540,7 +622,10 @@ account, TTL, labels) and every BigQuery job, which never depended on where Airf
   started the most recent 10:00 UTC run as soon as the DAG was unpaused (see above). The components
   a scheduled run adds (LocalExecutor, the execution API behind the JWT secret) came up healthy but
   were not exercised by a task.
-- **No alerting.** A failed run is red in the UI and nowhere else; alerting is Stage 5.
+- **Failures after the alert step reach no channel.** Since Stage 5 the KPI and tag-health alerts go to a webhook or
+  the log ([monitoring.md](monitoring.md)), and since the review the message names every task that failed before
+  `notify_alerts` runs (the build, a check, `detect_anomalies`). A Spark batch or an attribution check that fails later
+  is red in the UI and nowhere else (an `on_failure_callback` on those tasks would post it; not done).
 - **The export day is a UTC date**, not the property's time zone. This property's day runs behind
   UTC: the simulator's hits, sent between 01:54 and 01:57 UTC on 2026-09-28, are in its table for
   2026-09-27, which the run for logical date 2026-09-28 reads.

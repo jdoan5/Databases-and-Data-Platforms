@@ -1,0 +1,121 @@
+# Tagline Stage 5: the anomaly rules and their thresholds, in one place (tagline_pipeline/anomaly.py reads this file;
+# docs/monitoring.md explains each rule and how the values were chosen from the backtest on the GA4 sample).
+
+[settings]
+window_days = 21            # each day is judged against the 21 days before it (three of each weekday)
+min_history = 14            # judged days needed in that window before the robust band applies
+k = 4.0                     # warning: this many scaled MADs from the centre (in the metric's direction)
+k_critical = 6.0            # critical
+seasonality = "weekday"     # centre = median of the same weekday in the window (3 values); spread pooled over the window
+min_weekday_points = 2      # fewer same-weekday values than this: the whole window's median instead
+log_offset = 1.0            # counts and money are judged as log(x + 1)
+
+# Tag health (mart_tag_health_daily): a check with status 'violation' alerts from the first day (contract_violation);
+# a documented expected quirk alerts only when its violation rate rises past the robust band.
+health_direction = "up"
+health_seasonality = "weekday"
+health_min_events = 30      # judge a day's rate only when it counts at least this many events
+health_min_delta = 0.10     # and only a rise of at least 10 percentage points
+health_min_ratio = 1.5      # to at least 1.5 times the expected rate (a quirk already on 55% of events is not news at 70%)
+health_min_spread = 0.01
+contract_critical_rate = 0.01   # a contract violation on 1% or more of an event's rows is critical, less is a warning
+critical_check_kinds = ["pii"]  # an email-like string is always critical
+
+# vanished (critical): an event with no row at all on a day the source has data, while its daily count over the
+# window's days with data (from its first day on) has a median of at least vanished_min_median. A tag that stops firing
+# leaves nothing for the other rules to judge. no_data (critical, no setting): a day with no row in mart_kpi_daily
+# between a source's first day and its last, or the export day the DAG waited for.
+vanished_min_median = 10    # Poisson odds of a zero day at a mean of 10 are about 1 in 22,000
+vanished_min_history = 3
+
+# Delivery: an alert is news while its day is at most this many days before the run's day (the DAG: the export day
+# it waited for). Older alerts stay in kpi_alerts and are not sent.
+notify_max_age_days = 4
+
+# One table per KPI of mart_kpi_daily. direction: which way is bad. scale: log for counts and money, linear for rates.
+# volume / min_volume: a rate is judged (band and floor) only on days whose denominator reaches min_volume.
+# min_expected: a count is judged only when its expected value, the window's same-weekday median, reaches it.
+# min_delta: the smallest change, in the metric's units, that can alert. min_spread: a lower bound on the spread (on
+# the judged scale). floor: an absolute level that alerts whatever the history (on a day that reaches min_volume).
+# upper_bound: a share's band stops at 1 (every band stops at 0 below).
+
+[kpi.sessions]
+direction = "down"
+scale = "log"
+min_expected = 100
+min_spread = 0.05
+
+[kpi.orders]
+direction = "down"
+scale = "log"
+min_expected = 10
+min_delta = 5
+min_spread = 0.1
+
+[kpi.revenue_usd]
+direction = "down"
+scale = "log"
+min_expected = 500
+min_spread = 0.1
+
+[kpi.aov_usd]
+direction = "both"
+scale = "log"
+volume = "orders"
+min_volume = 10
+min_spread = 0.05
+
+[kpi.engaged_session_rate]
+upper_bound = 1.0
+direction = "down"
+volume = "sessions"
+min_volume = 100
+min_delta = 0.02
+min_spread = 0.005
+
+[kpi.conversion_rate]
+upper_bound = 1.0
+direction = "down"
+scale = "log"               # a halving is the same size at 1% as at 3%
+log_offset = 0.001
+volume = "sessions"
+min_volume = 100
+min_delta = 0.002
+min_spread = 0.05
+
+[kpi.add_to_cart_rate]
+upper_bound = 1.0
+direction = "down"
+scale = "log"
+log_offset = 0.005
+volume = "sessions"
+min_volume = 100
+min_delta = 0.01
+min_spread = 0.05
+floor = 0.005               # under 0.5% of sessions: add_to_cart is not being collected (on a day of 100+ sessions)
+
+[kpi.checkout_to_purchase_rate]
+upper_bound = 1.0
+direction = "down"
+scale = "log"
+log_offset = 0.01
+volume = "checkout_sessions"
+min_volume = 30
+min_delta = 0.05
+min_spread = 0.05
+
+[kpi.cookieless_order_share]
+upper_bound = 1.0
+direction = "up"
+volume = "orders"
+min_volume = 10
+min_delta = 0.1
+min_spread = 0.02
+
+[kpi.consent_accept_share]
+upper_bound = 1.0
+direction = "down"
+volume = "events"
+min_volume = 200
+min_delta = 0.05
+min_spread = 0.01

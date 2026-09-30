@@ -11,6 +11,8 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    /* tagqa/ reuses the simulator's GA4 hit parser (simulator/src/hits.js), typed by inference. */
+    "allowJs": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
@@ -21,5 +23,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["e2e", "playwright.config.ts"]
+  "include": ["e2e", "tagqa", "playwright.config.ts", "playwright.tagqa.config.ts"]
 }

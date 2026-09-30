@@ -80,7 +80,35 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("numbers", help="print the reconciled numbers (events, sessions, orders, revenue, identity, cost)")
 
+    a = sub.add_parser(
+        "alerts",
+        help="Stage 5: the anomaly rules on mart_kpi_daily and mart_tag_health_daily (detect: replace kpi_alerts; notify: "
+        "send what is new; run: both; backtest: print every alert over every day, write nothing). Reads the marts through "
+        "the table-data API and writes with a load job: no query is billed",
+    )
+    a.add_argument("action", choices=["detect", "notify", "run", "backtest"])
+    a.add_argument(
+        "--as-of",
+        metavar="YYYY-MM-DD",
+        help="notify / run: the day alerts are news on (default: today, UTC). detect / run: also the last day the site's "
+        "export is due, so days after its newest data up to it are no_data alerts (without it: only gaps between days "
+        "with data)",
+    )
+    a.add_argument("--source", help="backtest: only this source")
+    a.add_argument("--fail-on-alert", action="store_true", help="notify / run: exit 1 when this run sends any alert")
+
+    sub.add_parser("contract-sql", help="print the tag health checks generated from tagging/events.schema.json (no BigQuery)")
+
     args = parser.parse_args(argv)
+    if args.command == "contract-sql":  # needs no project or credentials
+        from . import contract
+
+        c = contract.load_contract()
+        print(f"-- generated from {contract.CONTRACT_FILE.name}, contract version {c.version}: {len(c.rules)} required fields "
+              f"in {len(c.events)} events; email pattern {c.email_pattern}\n-- checks per event:")
+        print(contract.checks_sql(c, indent=""))
+        print("-- pii (every event):\n" + contract.pii_sql(c))
+        return EXIT_OK
     try:
         cfg = load_config(
             ga4_dataset=getattr(args, "site_dataset", None),
@@ -165,6 +193,9 @@ def _run(args: argparse.Namespace, cfg, stats: list[JobStat]) -> int:
         print(pipeline.format_checks(checks))
         return EXIT_OK if all(not r.failures for r in checks) else EXIT_CHECK_FAILED
 
+    if args.command == "alerts":
+        return _alerts(args, cfg, bq)
+
     if args.command == "numbers":
         reports, report_stats = pipeline.run_reports(cfg, bq)
         stats += report_stats
@@ -174,6 +205,37 @@ def _run(args: argparse.Namespace, cfg, stats: list[JobStat]) -> int:
         return EXIT_OK
 
     return EXIT_CONFIG
+
+
+def _alerts(args: argparse.Namespace, cfg, bq) -> int:
+    from datetime import date, datetime, timezone
+
+    from . import alerts, anomaly
+    from .pipeline import format_rows
+
+    config = anomaly.load_config()
+    if args.action == "backtest":
+        kpi, health = alerts.read_marts(cfg, bq)
+        found = [a for a in anomaly.detect(kpi, health, config) if args.source in (None, a.source)]
+        print(format_rows([
+            {"date": a.date.isoformat(), "source": a.source, "metric": a.metric, "rule": a.rule, "severity": a.severity,
+             "value": round(a.value, 4), "expected": None if a.expected is None else round(a.expected, 4),
+             "score": a.score} for a in found
+        ]))
+        from collections import Counter
+
+        print(f"\n{len(found)} alert(s) on {len({(a.date, a.source) for a in found})} source-day(s); "
+              f"by rule {dict(Counter(a.rule for a in found))}, by severity {dict(Counter(a.severity for a in found))}")
+        return EXIT_OK
+    due = date.fromisoformat(args.as_of) if args.as_of else None
+    if args.action in ("detect", "run"):
+        alerts.detect_and_store(cfg, bq, config, as_of=due)
+    if args.action == "detect":
+        return EXIT_OK
+    as_of = due or datetime.now(timezone.utc).date()
+    result = alerts.notify(cfg, bq, as_of, cfg.alert_webhook_url, config)
+    print(f"alerts as of {as_of}: {result.fresh} news ({result.new} sent now, delivery {result.delivery}), {result.critical} critical")
+    return EXIT_CHECK_FAILED if args.fail_on_alert and result.new else EXIT_OK
 
 
 if __name__ == "__main__":

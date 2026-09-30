@@ -42,6 +42,7 @@ transaction, so either every table moves forward or none does:
   | fct_orders | whole table, from int_purchases, fct_sessions and int_identity | small once it reads int_purchases instead of stg_events |
   | fct_order_items | the lines of every order that is new, gone or changed, from the stg_items partitions of those orders' dates | lines carry the order's id, person and session |
   | mart_campaign_daily, mart_funnel_daily | whole tables | a few MiB of fct_sessions |
+  | mart_kpi_daily, mart_tag_health_daily | the days the window can change: each window source's days from the first day of the earliest session recomputed, and the days of changed orders and of earlier purchases whose collision flag flipped | rows are per day; tag health reads stg_events, so only those days' partitions (Stage 5) |
   | staged_export_days | the site window's days replaced by what this run read | the next run compares the export with it |
 
 The script, and the window, are pure functions of their inputs, so both are unit tested without BigQuery.
@@ -371,7 +372,7 @@ def script(
     if window.empty:
         raise WindowError("the window is empty: nothing to process")
     for name in ("stg_events", "stg_items", "int_purchases", "int_device_days", "int_identity", "fct_sessions", "fct_orders",
-                 "fct_order_items", "mart_campaign_daily", "mart_funnel_daily"):
+                 "fct_order_items", "mart_campaign_daily", "mart_funnel_daily", "mart_kpi_daily", "mart_tag_health_daily"):
         if name not in models:
             raise TemplateError(f"no model {name}")
     t = {name: _table(cfg, m) for name, m in models.items()}
@@ -381,8 +382,13 @@ def script(
     min_since = _d(window.min_since).isoformat()
 
     def body(name: str, **extra: object) -> str:
-        ctx = {**base_context, "incremental_filter": "", "purchase_history": "", **extra}
+        ctx = {**base_context, "incremental_filter": "", "incremental_filter_sessions": "", "incremental_filter_orders": "",
+               "purchase_history": "", **extra}
         return render(select_body(models[name].sql()), ctx)
+
+    def affected(column: str) -> str:
+        """The days step 10 recomputes, on a date column of the table read or written (see step 10)."""
+        return f"((source IN ({in_window_sources}) AND {column} >= min_session_date) OR {column} IN UNNEST(extra_dates))"
 
     sample = window.get(SAMPLE)
     stg_events = body(
@@ -408,7 +414,7 @@ def script(
     if staged is not None and site_window is not None:
         keep = set(site_window.days)
         staged_step = f"""
--- 10. What was staged: the site window's days, each with its export table's metadata as read before this run.
+-- 11. What was staged: the site window's days, each with its export table's metadata as read before this run.
 MERGE `{cfg.project}.{cfg.staging_dataset}.{STAGED_TABLE}` AS T USING (
 {staged_rows_sql(x for d, x in staged.items() if d in keep)}
 ) AS S ON FALSE
@@ -420,6 +426,7 @@ WHEN NOT MATCHED BY SOURCE AND T.source = '{SITE}' AND T.export_day >= DATE '{_d
 -- Window: {window.describe()}
 DECLARE min_session_date DATE;
 DECLARE order_dates ARRAY<DATE>;
+DECLARE extra_dates ARRAY<DATE>;
 
 BEGIN TRANSACTION;
 
@@ -599,6 +606,28 @@ MERGE {t['mart_funnel_daily']} AS T USING (
 ) AS S ON FALSE
 WHEN NOT MATCHED THEN INSERT ROW
 WHEN NOT MATCHED BY SOURCE THEN DELETE;
+
+-- 10. The monitoring marts (Stage 5): one row per day, so only the days this run can change are recomputed: for each
+-- source in the window, every day from the first day of the earliest session recomputed in step 6 (min_session_date,
+-- which is never after the window's first day); and the days of orders that changed in step 7 and of earlier purchases
+-- whose collision flag flipped in step 1. Recomputing a day reads only that day's rows, so a superset is harmless.
+SET extra_dates = ARRAY(
+  SELECT DISTINCT d FROM (
+    SELECT p.event_date AS d FROM {t['int_purchases']} AS p JOIN _flips AS f USING (source, transaction_id)
+    UNION ALL
+    SELECT d FROM UNNEST(IFNULL(order_dates, ARRAY<DATE>[])) AS d
+  )
+);
+
+DELETE FROM {t['mart_kpi_daily']} WHERE {affected("date")};
+
+INSERT INTO {t['mart_kpi_daily']}
+{body("mart_kpi_daily", incremental_filter=f"AND {affected('event_date')}", incremental_filter_sessions=f"AND {affected('session_date')}", incremental_filter_orders=f"AND {affected('order_date')}")};
+
+DELETE FROM {t['mart_tag_health_daily']} WHERE {affected("date")};
+
+INSERT INTO {t['mart_tag_health_daily']}
+{body("mart_tag_health_daily", incremental_filter=f"AND {affected('event_date')}", incremental_filter_sessions=f"AND {affected('session_date')}")};
 {staged_step}
 COMMIT TRANSACTION;
 """

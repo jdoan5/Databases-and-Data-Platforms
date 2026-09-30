@@ -46,11 +46,17 @@ reference.py (seeded) ──► tagline_raw.campaign_costs (SYNTHETIC) ──┐
                                                                    ▼
                         fct_sessions ──► tagline_marts.mart_campaign_daily
                         fct_sessions ──► tagline_marts.mart_funnel_daily
+
+Stage 5 (docs/monitoring.md):
+  stg_events, fct_sessions, fct_orders ──► tagline_marts.mart_kpi_daily
+  stg_events, fct_sessions ──► tagline_marts.mart_tag_health_daily ◄── tagging/events.schema.json (generated checks)
+  both marts ──► anomaly rules (pipeline/monitoring.toml) ──► tagline_marts.kpi_alerts (written by Python, not a model)
 ```
 
 Build order is the numeric prefix of the model files: `10_stg_events`, `20_stg_items`,
 `25_int_purchases`, `27_int_device_days`, `30_int_identity`, `40_fct_sessions`, `50_fct_orders`,
-`60_fct_order_items`, `70_mart_campaign_daily`, `80_mart_funnel_daily`. `stg_`/`int_` models build
+`60_fct_order_items`, `70_mart_campaign_daily`, `80_mart_funnel_daily`, and since Stage 5 `85_mart_kpi_daily` and
+`90_mart_tag_health_daily`. `stg_`/`int_` models build
 into `tagline_staging`, `fct_`/`mart_` into `tagline_marts`. `fct_orders` reads the purchase events
 from `int_purchases` (stg_events' 5,705 purchase rows, narrow) rather than scanning all of
 `stg_events`, plus `fct_sessions` and `int_identity` (the person of an order placed in no session).
@@ -78,6 +84,9 @@ were added in Stage 4 for the daily incremental build ([below](#incremental-buil
 | `tagline_marts.fct_order_items` | order line | `source, order_id, line_number` | `order_date` | 15,063 | 22 |
 | `tagline_marts.mart_campaign_daily` | date × source × session source / medium / campaign | all five | `date` | 2,634 | 5 |
 | `tagline_marts.mart_funnel_daily` | date × source | `date, source` | `date` | 92 | 1 |
+| `tagline_marts.mart_kpi_daily` (Stage 5) | date × source: the KPIs the alerts watch | `date, source` | `date` | 92 | 1 |
+| `tagline_marts.mart_tag_health_daily` (Stage 5) | date × source × event name × check | `date, source, event_name, check_name` | `date` / `source, event_name` | 8,416 | 239 |
+| `tagline_marts.kpi_alerts` (Stage 5) | alert: date × source × metric × rule, replaced by `make alerts` / the DAG with a load job | `date, source, metric, rule` | `date` | 114 | 0 |
 
 Partitioning is by the table's date. Stage 4 measured the layout (experiment 4) and kept it with one change:
 
@@ -387,6 +396,8 @@ Each check is a query in `pipeline/sql/checks/` that returns no rows when it pas
 | 07 identity | no person has two `user_id`s; each device's person and rule follow from its `user_id`s and each session's from its own `user_id` and device (NULL-safe); every `user_id` is 32-hex |
 | 08 no email-like strings | no email (raw or `%40`) in `user_id`, `person_id`, page URL, title, referrer, search term or landing page; reports counts, never values |
 | 09 synthetic is labelled | every cost row is flagged synthetic and both reference tables' descriptions say SYNTHETIC |
+| 10 KPI reconciles (Stage 5) | `mart_kpi_daily`: one row per date and source for every day with a session, an order or a consent-recording event; every count equals `fct_sessions`, `fct_orders` or `stg_events` on that day; every rate within 0 and 1 |
+| 11 tag health reconciles (Stage 5) | `mart_tag_health_daily`: key unique; every event name on every day covered with its exact event count, every session day with its session count; every contract event holds every check the contract generates; status consistent with violations and expectations |
 
 ---
 
@@ -462,6 +473,7 @@ build leaves empty):
 | `fct_orders` | recomputed whole, from `int_purchases`, `fct_sessions` and `int_identity` (about 70 MiB) | an order takes its session's attribution and person |
 | `fct_order_items` | the lines of every order that is new, gone or changed, read from the `stg_items` partitions of those orders' dates | lines carry the order's id, person and session |
 | `mart_campaign_daily`, `mart_funnel_daily` | recomputed whole | a few MiB of `fct_sessions` |
+| `mart_kpi_daily`, `mart_tag_health_daily` (Stage 5) | the days the run can change are deleted and re-inserted: each window source's days from the first day of the earliest recomputed session, plus the days of changed orders and of flipped collisions | one row per day; tag health reads `stg_events`, so only those partitions (711 KiB on the site's day) |
 | `staged_export_days` | the site window's days replaced by what this run read (the metadata taken before the read) | the next run compares the export with it |
 
 The three expressions that give a session its person (`-- identity: begin` to `-- identity: end` in

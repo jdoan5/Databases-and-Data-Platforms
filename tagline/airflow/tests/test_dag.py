@@ -13,7 +13,10 @@ batch has a TTL, labels and the service account, and its task cancels the batch 
 early (any exception, a Ctrl-C), not only on Airflow's timeout; batch ids are valid, unique per run and
 try, and stable; the sensor works on a run with no logical date (a manual trigger); run_summary names the
 batch state that the operator's XCom stores as an integer, waits (boundedly) for the batch's usage,
-which Dataproc reports only after the XCom is taken, and prices it as `make spark-submit` does.
+which Dataproc reports only after the XCom is taken, and prices it as `make spark-submit` does; the Stage 5
+alert tasks run once every check is done (passed or not), call the pipeline's alerts module for the export day
+the run waited for (detect: as the last day data is due; notify: with the run's failed tasks), and fail the run
+only with fail_on_alert (default off) when this run sent an alert.
 """
 
 from __future__ import annotations
@@ -46,17 +49,23 @@ MODEL_EDGES = {  # docs/data-model.md, "Lineage"
     ("stg_items", "fct_order_items"),
     ("fct_sessions", "mart_campaign_daily"),
     ("fct_sessions", "mart_funnel_daily"),
+    ("stg_events", "mart_kpi_daily"),  # Stage 5: the monitoring marts (docs/monitoring.md)
+    ("fct_sessions", "mart_kpi_daily"),
+    ("fct_orders", "mart_kpi_daily"),
+    ("stg_events", "mart_tag_health_daily"),
+    ("fct_sessions", "mart_tag_health_daily"),
 }
 MODELS = [
     "stg_events", "stg_items", "int_purchases", "int_device_days", "int_identity", "fct_sessions",
-    "fct_orders", "fct_order_items", "mart_campaign_daily", "mart_funnel_daily",
+    "fct_orders", "fct_order_items", "mart_campaign_daily", "mart_funnel_daily", "mart_kpi_daily", "mart_tag_health_daily",
 ]
 STAGE2_CHECKS = [
     "keys_unique", "orders_have_session_and_person", "order_revenue_reconciles", "marts_reconcile",
     "sample_row_counts", "sessions_cover_events", "identity", "no_email_like_strings", "synthetic_is_labelled",
+    "kpi_reconciles", "tag_health_reconciles",
 ]
 ATTRIBUTION_CHECKS = ["weights_sum_to_one", "revenue_conserved", "last_click_matches_stage2"]
-LEAF_MODELS = {"fct_order_items", "mart_campaign_daily", "mart_funnel_daily"}
+LEAF_MODELS = {"fct_order_items", "mart_campaign_daily", "mart_funnel_daily", "mart_kpi_daily", "mart_tag_health_daily"}
 
 _dag = None
 
@@ -93,6 +102,7 @@ def test_task_ids():
         *(f"stage2_checks.{c}" for c in STAGE2_CHECKS),
         "attribution_enabled", "spark_attribution",
         *(f"attribution_checks.{c}" for c in ATTRIBUTION_CHECKS),
+        "detect_anomalies", "notify_alerts",
         "run_summary",
     }
     assert set(load_dag().task_ids) == expected, set(load_dag().task_ids) ^ expected
@@ -115,6 +125,9 @@ def test_dependencies():
         ("attribution_enabled", "spark_attribution"),
         *(("spark_attribution", f"attribution_checks.{c}") for c in ATTRIBUTION_CHECKS),
         *((f"attribution_checks.{c}", "run_summary") for c in ATTRIBUTION_CHECKS),
+        *((f"stage2_checks.{c}", "detect_anomalies") for c in STAGE2_CHECKS),
+        ("detect_anomalies", "notify_alerts"),
+        ("notify_alerts", "run_summary"),
     }
     actual = edges(dag)
     assert actual == expected, f"missing: {sorted(expected - actual)}; unexpected: {sorted(actual - expected)}"
@@ -142,6 +155,9 @@ def test_run_settings():
     for c in STAGE2_CHECKS:  # after whichever build branch ran
         assert dag.get_task(f"stage2_checks.{c}").trigger_rule == "none_failed_min_one_success", c
     assert dag.params["full_refresh"] is False, "the daily run is incremental unless asked otherwise"
+    assert dag.params["fail_on_alert"] is False, "an alert does not fail the run unless asked"
+    for t in ("detect_anomalies", "notify_alerts"):  # once the checks are done, passed or not: a failed check is news too
+        assert dag.get_task(t).trigger_rule == "all_done", t
     assert [t.task_id for t in dag.tasks if not t.downstream_task_ids] == ["run_summary"], "run_summary must be the only leaf"
 
 
@@ -220,6 +236,74 @@ def test_the_stg_events_task_records_what_it_read_taken_before_the_job():
             op.after_job({}, cfg, site, "", None, SimpleNamespace(rows=None))
     assert calls == [("export_state", site, {"orchestrator": "airflow"}), "job stg_events", "docs", ("record_staged", {"20260927": "state"}),
                      "job stg_items", "docs"]
+
+
+def test_the_alert_tasks_run_the_pipelines_alerts_and_fail_only_when_asked():
+    """detect_anomalies and notify_alerts call the Stage 2 package's alerts module with the Airflow label, for the export
+    day the run waited for; notify_alerts passes the run's failed tasks and fails the run only with fail_on_alert and an
+    alert sent by this run."""
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from tagline_airflow import stage2
+    from tagline_pipeline import alerts
+
+    dag = load_dag()
+    seen = {}
+
+    def fake_detect(cfg, bq, config=None, now=None, as_of=None):
+        seen.update(detect_labels=bq.extra_labels, detect_as_of=as_of)
+        return alerts.DetectResult(1, {"mad": 1}, {"warning": 1}, {}, "abc")
+
+    def fake_notify(cfg, bq, as_of, webhook_url, config=None, now=None, send=None, run_problems=()):
+        seen.update(labels=bq.extra_labels, as_of=as_of, problems=list(run_problems))
+        return alerts.NotifyResult(as_of.isoformat(), fresh=2, new=2, critical=1, delivery="log", lines=["header", "- a", "- b"],
+                                   run_problems=list(run_problems))
+
+    class FakeTI:
+        dag_id, run_id, task_id = DAG_ID, "manual__1", "notify_alerts"
+
+        def get_task_states(self, dag_id, run_ids):
+            return {"manual__1": {"stage2_checks.no_email_like_strings": "failed", "spark_attribution": "running",
+                                  "detect_anomalies": "success", "notify_alerts": "running"}}
+
+        def xcom_push(self, key, value):
+            pass
+
+    when = datetime(2026, 9, 28, 10, tzinfo=timezone.utc)
+    detect = dag.get_task("detect_anomalies").python_callable
+    notify = dag.get_task("notify_alerts").python_callable
+    saved = notify.__globals__["bigquery_client"]
+    notify.__globals__["bigquery_client"] = lambda: object()
+    try:
+        with mock.patch.object(alerts, "notify", fake_notify), mock.patch.object(alerts, "detect_and_store", fake_detect), \
+                contextlib.redirect_stdout(io.StringIO()):
+            detect(logical_date=when, dag_run=None)
+            summary = notify(params={"fail_on_alert": False}, logical_date=when, dag_run=None, ti=FakeTI())
+            try:
+                notify(params={"fail_on_alert": True}, logical_date=when, dag_run=None, ti=FakeTI())
+            except Exception as e:  # noqa: BLE001
+                failed = e
+            else:
+                failed = None
+    finally:
+        notify.__globals__["bigquery_client"] = saved
+    assert seen == {"detect_labels": {"orchestrator": "airflow"}, "detect_as_of": date(2026, 9, 27),
+                    "labels": {"orchestrator": "airflow"}, "as_of": date(2026, 9, 27),
+                    "problems": ["stage2_checks.no_email_like_strings"]}
+    assert summary["fresh"] == 2 and summary["delivery"] == "log" and summary["run_problems"] == ["stage2_checks.no_email_like_strings"]
+    assert type(failed).__name__ == "AirflowFailException" and "fail_on_alert is on" in str(failed)
+    assert stage2.alert_failure({"fresh": 0, "new": 0}, True) is None and stage2.alert_failure(summary, False) is None
+    assert stage2.alert_failure({**summary, "new": 0}, True) is None, "alerts sent by an earlier run do not fail this one"
+
+    class Unreadable(FakeTI):
+        def get_task_states(self, dag_id, run_ids):
+            return {}
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert stage2.failed_so_far(Unreadable()) == [], "a report must not stop the delivery"
+    assert stage2.failed_so_far(SimpleNamespace(**{k: getattr(FakeTI, k) for k in ("dag_id", "run_id", "task_id")},
+                                                get_task_states=FakeTI().get_task_states)) == ["stage2_checks.no_email_like_strings"]
 
 
 def test_every_bigquery_job_has_the_cost_guard():

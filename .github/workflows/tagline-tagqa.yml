@@ -1,0 +1,79 @@
+name: tagline-tagqa
+
+# Tag QA for the Tagline storefront (Stage 5): the Stage 1 funnel test, every journey of
+# the tag test plan against the dataLayer contract and its golden snapshot, and the GA4
+# hits gtag.js forms from them. tagline/docs/tag-qa.md describes the suite.
+#
+# Runs on Playwright's Chromium (locally the suite uses the installed Chrome). The GA4
+# layer downloads gtag.js from www.googletagmanager.com with a fake measurement id;
+# every hit is answered inside the browser and none reaches Google. Nothing is written
+# back: a golden is never updated in CI, a mismatch fails with its diff.
+#
+# tagline-site.yml (typecheck, unit tests, build) stays as it is: no browser, fast, and
+# not held up by a gtag.js download.
+
+on:
+  push:
+    paths:
+      - "tagline/site/**"
+      - "tagline/tagging/**"
+      - "tagline/simulator/src/hits.js"
+      - ".github/workflows/tagline-tagqa.yml"
+  pull_request:
+    paths:
+      - "tagline/site/**"
+      - "tagline/tagging/**"
+      - "tagline/simulator/src/hits.js"
+      - ".github/workflows/tagline-tagqa.yml"
+  workflow_dispatch:
+
+# Least privilege: the job only reads the repository. Artifacts need no token scope.
+permissions:
+  contents: read
+
+concurrency:
+  group: tagline-tagqa-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: tagline/site
+
+jobs:
+  tagqa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tagline/site/package-lock.json
+
+      - run: npm ci
+
+      - name: Install Playwright's Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Tag QA (npm run tagqa)
+        run: npm run tagqa
+
+      - name: Upload the Playwright HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tagqa-report
+          path: tagline/site/playwright-report/
+          retention-days: 14
+
+      # Per failed test: the violations, the golden diff (<journey>.golden.diff.txt), the
+      # run's own snapshot (<journey>.actual.json) and the Playwright trace.
+      - name: Upload the golden diffs and traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tagqa-diff
+          path: tagline/site/test-results/
+          retention-days: 14

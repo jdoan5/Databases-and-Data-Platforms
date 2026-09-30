@@ -7,6 +7,7 @@
 #
 #   make setup && make test && make reference && make build && make numbers
 #   make airflow-up && make airflow-check && make airflow-test && make airflow-down
+#   make alerts-backtest && make alerts                                   (Stage 5)
 
 SHELL := /bin/bash
 
@@ -82,8 +83,32 @@ numbers: ## print the reconciled numbers (events, sessions, orders, revenue, ide
 fixture: ## temporary fake GA4 export tables in tagline_raw: build with them, verify, rebuild, delete them
 	cd $(PIPELINE) && .venv/bin/python tests/site_export_fixture.py
 
-test-pipeline: ## pytest: config, cost guard, cost table, CLI exit codes, dry run, sources, SQL files, reference data, fixture rows
+test-pipeline: ## pytest: config, cost guard, cost table, CLI exit codes, dry run, sources, SQL files, reference data, fixture rows, contract checks, anomaly rules, alert delivery
 	cd $(PIPELINE) && .venv/bin/python -m pytest -q
+
+# --- Stage 5: tag health, KPIs and anomaly alerts (docs/monitoring.md) ----------------
+
+# make alerts AS_OF=2026-09-27 (default: today, UTC; given, it is also the last day the site's export is due, so a
+# missing day up to it is a no_data alert); FAIL_ON_ALERT=1 exits 1 when the run sends an alert
+AS_OF         ?=
+FAIL_ON_ALERT ?=
+
+.PHONY: alerts alerts-detect alerts-backtest contract-sql test-tag-health-sql
+
+alerts: ## the anomaly rules on the monitoring marts, kpi_alerts replaced, then send what is news (webhook or log); no query billed
+	$(CLI) alerts run $(if $(AS_OF),--as-of $(AS_OF),) $(if $(FAIL_ON_ALERT),--fail-on-alert,)
+
+alerts-detect: ## only replace kpi_alerts (no delivery)
+	$(CLI) alerts detect
+
+alerts-backtest: ## every alert the rules raise over every day of the marts (the 92-day backtest on the sample); writes nothing
+	$(CLI) alerts backtest
+
+contract-sql: ## print the tag health checks generated from tagging/events.schema.json (no BigQuery)
+	$(CLI) contract-sql
+
+test-tag-health-sql: ## LIVE, 0 bytes billed: mart_tag_health_daily's SQL run on literal rows in BigQuery; asserts what each check flags
+	cd $(PIPELINE) && TAGLINE_BQ_TESTS=1 .venv/bin/python -m pytest -q tests/test_tag_health_sql_bq.py
 
 # --- Stage 2: traffic simulator -----------------------------------------------------
 

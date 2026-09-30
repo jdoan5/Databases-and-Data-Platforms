@@ -24,7 +24,8 @@ DATASET_DESCRIPTIONS = {
     "(SYNTHETIC rows shaped like a GA4 export; deleted at the end, 24-hour expiry).",
     "staging": "Tagline Stage 2: stg_events, stg_items, int_purchases, int_device_days, int_identity, built from the GA4 "
     "exports by tagline/pipeline, and staged_export_days, what the builds read from the site's export (Stage 4).",
-    "marts": "Tagline Stage 2: sessions, orders, order items and daily campaign / funnel marts, built by tagline/pipeline.",
+    "marts": "Tagline Stage 2: sessions, orders, order items and daily campaign / funnel marts, built by tagline/pipeline; "
+    "Stage 5: the daily KPI and tag health marts and kpi_alerts.",
 }
 
 
@@ -242,19 +243,25 @@ class BigQuery:
         rows: list[dict[str, Any]],
         schema: list[bigquery.SchemaField],
         description: str,
+        *,
+        stage: str = "2",
+        partition_field: str | None = None,
     ) -> JobStat:
-        """Replace a table with these rows (a load job: free, unlike streaming inserts)."""
+        """Replace a table with these rows (a load job: free, unlike streaming inserts). `partition_field`: a DATE column
+        to partition a new table by (an existing table keeps its partitioning)."""
         job_config = bigquery.LoadJobConfig(
             schema=schema,
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
             destination_table_description=description,
-            labels={"app": "tagline", "stage": "2", "kind": "load", "step": _label(step)},
+            labels={**self.extra_labels, "app": "tagline", "stage": _label(stage), "kind": "load", "step": _label(step)},
         )
+        if partition_field is not None:
+            job_config.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field=partition_field)
         job = self.client.load_table_from_json(rows, table_id, job_config=job_config, project=self.cfg.project, location=self.cfg.location)
         job.result()
         table = self.client.get_table(table_id)
-        table.labels = {**(table.labels or {}), "app": "tagline", "stage": "2"}
+        table.labels = {**(table.labels or {}), "app": "tagline", "stage": _label(stage)}
         self.client.update_table(table, ["labels"])
         seconds = (job.ended - job.started).total_seconds() if job.ended and job.started else None
         return JobStat(step=step, kind="load", seconds=seconds, rows=job.output_rows, job_id=job.job_id)

@@ -4,19 +4,22 @@ name: tagline-site
 #
 # The unit tests validate every event builder against tagging/events.schema.json, so
 # a change to the contract that the site no longer satisfies fails here too — which is
-# why the schema folder is in the path filter. The Playwright funnel test is not run
-# in CI yet; that is Stage 5 (tag QA).
+# why the schema folder is in the path filter. The Playwright tests (the funnel test
+# and the Stage 5 tag QA suite) run in tagline-tagqa.yml. The typecheck covers tagqa/,
+# which imports the simulator's GA4 hit parser, so that file is in the filter too.
 
 on:
   push:
     paths:
       - "tagline/site/**"
       - "tagline/tagging/**"
+      - "tagline/simulator/src/hits.js"
       - ".github/workflows/tagline-site.yml"
   pull_request:
     paths:
       - "tagline/site/**"
       - "tagline/tagging/**"
+      - "tagline/simulator/src/hits.js"
       - ".github/workflows/tagline-site.yml"
   workflow_dispatch:
 

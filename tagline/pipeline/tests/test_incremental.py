@@ -272,3 +272,24 @@ def test_a_sample_day_reads_only_that_days_table():
 def test_an_empty_window_has_no_script():
     with pytest.raises(inc.WindowError):
         _script(inc.Window())
+
+
+def test_the_monitoring_marts_recompute_only_the_days_the_window_can_change():
+    """Stage 5: mart_kpi_daily and mart_tag_health_daily are one row per day, so step 10 deletes and re-inserts only the
+    window sources' days from min_session_date on, plus the days of changed orders and of flipped collisions; the tag
+    health insert reads only those stg_events partitions."""
+    site = SiteTables(daily=("20260926",), intraday_only=())
+    w = inc.Window((inc.SourceWindow("tagline_site", ("20260926",), "x"),))
+    sql = _script(w, site)
+    step = sql[sql.index("-- 10. The monitoring marts"):sql.index("COMMIT TRANSACTION;")]
+    affected = "((source IN ('tagline_site') AND {col} >= min_session_date) OR {col} IN UNNEST(extra_dates))"
+    assert sql.index("SET min_session_date") < sql.index("SET order_dates") < sql.index("SET extra_dates")
+    assert "DECLARE extra_dates ARRAY<DATE>;" in sql.split("BEGIN TRANSACTION;")[0]
+    for table in ("mart_kpi_daily", "mart_tag_health_daily"):
+        assert f"DELETE FROM `my-project.tagline_marts.{table}` WHERE {affected.format(col='date')};" in step
+        assert f"INSERT INTO `my-project.tagline_marts.{table}`" in step
+    assert step.count(f"AND {affected.format(col='event_date')}") == 2  # both marts' stg_events reads
+    assert step.count(f"AND {affected.format(col='session_date')}") == 2
+    assert step.count(f"AND {affected.format(col='order_date')}") == 1
+    assert "JOIN _flips AS f USING (source, transaction_id)" in step and "IFNULL(order_dates, ARRAY<DATE>[])" in step
+    assert "CREATE OR REPLACE" not in step and "{{" not in step

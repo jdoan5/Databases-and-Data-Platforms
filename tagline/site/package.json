@@ -10,7 +10,9 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "tagqa": "playwright test -c playwright.tagqa.config.ts",
+    "tagqa:update": "playwright test -c playwright.tagqa.config.ts --project=datalayer --update-snapshots=all"
   },
   "dependencies": {
     "ajv": "^8.20.0",

@@ -1,0 +1,597 @@
+{
+  "journey": "two_orders",
+  "title": "Two orders in one visit, each with its own transaction_id",
+  "note": "Written by `npm run tagqa:update` (tagline/site/tagqa). The dataLayer of each page load, with GA4 forwarding off. Placeholders: <origin> is the dev server, <transaction_id:n> and <user_id:n> the n-th distinct id in the journey.",
+  "loads": [
+    {
+      "pushes": [
+        [
+          "consent",
+          "default",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        {
+          "event": "page_view",
+          "page_location": "<origin>/product/TL-OFF-001",
+          "page_title": "Dot Grid Notebook · Tagline Supply"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 12,
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 36,
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 3
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/cart",
+          "page_title": "Cart · Tagline Supply",
+          "page_referrer": "<origin>/product/TL-OFF-001"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 36,
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 3
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/checkout",
+          "page_title": "Checkout · Tagline Supply",
+          "page_referrer": "<origin>/cart"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "begin_checkout",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 36,
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 3
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_shipping_info",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 36,
+            "shipping_tier": "Next Day",
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 3
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_payment_info",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 36,
+            "payment_type": "Gift Card",
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 3
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/order/<transaction_id:1>",
+          "page_title": "Order confirmed · Tagline Supply",
+          "page_referrer": "<origin>/checkout"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "purchase",
+          "ecommerce": {
+            "transaction_id": "<transaction_id:1>",
+            "currency": "USD",
+            "value": 36,
+            "tax": 2.88,
+            "shipping": 25,
+            "items": [
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 3
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/",
+          "page_title": "All products · Tagline Supply",
+          "page_referrer": "<origin>/order/<transaction_id:1>"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item_list",
+          "ecommerce": {
+            "currency": "USD",
+            "item_list_id": "all_products",
+            "item_list_name": "All products",
+            "items": [
+              {
+                "item_id": "TL-APP-001",
+                "item_name": "Classic Logo Tee",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Navy",
+                "price": 24,
+                "quantity": 1,
+                "index": 0
+              },
+              {
+                "item_id": "TL-APP-002",
+                "item_name": "Classic Logo Tee",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Heather Grey",
+                "price": 24,
+                "quantity": 1,
+                "index": 1
+              },
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1,
+                "index": 2
+              },
+              {
+                "item_id": "TL-APP-004",
+                "item_name": "Query Crewneck",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Forest",
+                "price": 46,
+                "quantity": 1,
+                "index": 3
+              },
+              {
+                "item_id": "TL-APP-005",
+                "item_name": "Dashboard Cap",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Black",
+                "price": 21.99,
+                "quantity": 1,
+                "index": 4
+              },
+              {
+                "item_id": "TL-DRK-001",
+                "item_name": "Ceramic Mug",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "item_variant": "White",
+                "price": 13.99,
+                "quantity": 1,
+                "index": 5
+              },
+              {
+                "item_id": "TL-DRK-002",
+                "item_name": "Insulated Bottle 20 oz",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "item_variant": "Slate",
+                "price": 29,
+                "quantity": 1,
+                "index": 6
+              },
+              {
+                "item_id": "TL-DRK-003",
+                "item_name": "Cold Brew Tumbler",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "price": 24.5,
+                "quantity": 1,
+                "index": 7
+              },
+              {
+                "item_id": "TL-DRK-004",
+                "item_name": "Enamel Camp Mug",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "price": 17.99,
+                "quantity": 1,
+                "index": 8
+              },
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 1,
+                "index": 9
+              },
+              {
+                "item_id": "TL-BAG-002",
+                "item_name": "Everyday Backpack",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 72,
+                "quantity": 1,
+                "index": 10
+              },
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1,
+                "index": 11
+              },
+              {
+                "item_id": "TL-BAG-004",
+                "item_name": "Packable Duffel",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 48,
+                "quantity": 1,
+                "index": 12
+              },
+              {
+                "item_id": "TL-OFF-001",
+                "item_name": "Dot Grid Notebook",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 12,
+                "quantity": 1,
+                "index": 13
+              },
+              {
+                "item_id": "TL-OFF-002",
+                "item_name": "Gel Pen 3-Pack",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 8.5,
+                "quantity": 1,
+                "index": 14
+              },
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1,
+                "index": 15
+              },
+              {
+                "item_id": "TL-OFF-004",
+                "item_name": "Cable Organizer",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "price": 9.99,
+                "quantity": 1,
+                "index": 16
+              },
+              {
+                "item_id": "TL-STK-001",
+                "item_name": "Logo Sticker",
+                "item_brand": "Tagline Supply",
+                "item_category": "Stickers",
+                "price": 3,
+                "quantity": 1,
+                "index": 17
+              },
+              {
+                "item_id": "TL-STK-002",
+                "item_name": "Sticker Pack",
+                "item_brand": "Tagline Supply",
+                "item_category": "Stickers",
+                "item_variant": "6 pack",
+                "price": 12,
+                "quantity": 1,
+                "index": 18
+              },
+              {
+                "item_id": "TL-STK-003",
+                "item_name": "Holographic Tag Sticker",
+                "item_brand": "Tagline Supply",
+                "item_category": "Stickers",
+                "price": 4.5,
+                "quantity": 1,
+                "index": 19
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "select_item",
+          "ecommerce": {
+            "currency": "USD",
+            "item_list_id": "all_products",
+            "item_list_name": "All products",
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1,
+                "index": 2
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/product/TL-APP-003",
+          "page_title": "Pipeline Hoodie, Charcoal · Tagline Supply",
+          "page_referrer": "<origin>/"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 58,
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 58,
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/cart",
+          "page_title": "Cart · Tagline Supply",
+          "page_referrer": "<origin>/product/TL-APP-003"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 58,
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/checkout",
+          "page_title": "Checkout · Tagline Supply",
+          "page_referrer": "<origin>/cart"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "begin_checkout",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 58,
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_shipping_info",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 58,
+            "shipping_tier": "Ground",
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_payment_info",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 58,
+            "payment_type": "Credit Card",
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/order/<transaction_id:2>",
+          "page_title": "Order confirmed · Tagline Supply",
+          "page_referrer": "<origin>/checkout"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "purchase",
+          "ecommerce": {
+            "transaction_id": "<transaction_id:2>",
+            "currency": "USD",
+            "value": 58,
+            "tax": 4.64,
+            "shipping": 5,
+            "items": [
+              {
+                "item_id": "TL-APP-003",
+                "item_name": "Pipeline Hoodie",
+                "item_brand": "Tagline Supply",
+                "item_category": "Apparel",
+                "item_variant": "Charcoal",
+                "price": 58,
+                "quantity": 1
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

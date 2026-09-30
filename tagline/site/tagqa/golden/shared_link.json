@@ -1,0 +1,95 @@
+{
+  "journey": "shared_link",
+  "title": "Landing from a shared link with an email in its query string",
+  "note": "Written by `npm run tagqa:update` (tagline/site/tagqa). The dataLayer of each page load, with GA4 forwarding off. Placeholders: <origin> is the dev server, <transaction_id:n> and <user_id:n> the n-th distinct id in the journey.",
+  "loads": [
+    {
+      "pushes": [
+        [
+          "consent",
+          "default",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        {
+          "event": "page_view",
+          "page_location": "<origin>/product/TL-DRK-001?ref=%5Bemail%5D",
+          "page_title": "Ceramic Mug, White · Tagline Supply"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 13.99,
+            "items": [
+              {
+                "item_id": "TL-DRK-001",
+                "item_name": "Ceramic Mug",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "item_variant": "White",
+                "price": 13.99,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 13.99,
+            "items": [
+              {
+                "item_id": "TL-DRK-001",
+                "item_name": "Ceramic Mug",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "item_variant": "White",
+                "price": 13.99,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/cart",
+          "page_title": "Cart · Tagline Supply",
+          "page_referrer": "<origin>/product/TL-DRK-001?ref=%5Bemail%5D"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 13.99,
+            "items": [
+              {
+                "item_id": "TL-DRK-001",
+                "item_name": "Ceramic Mug",
+                "item_brand": "Tagline Supply",
+                "item_category": "Drinkware",
+                "item_variant": "White",
+                "price": 13.99,
+                "quantity": 1
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

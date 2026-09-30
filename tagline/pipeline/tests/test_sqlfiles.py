@@ -40,9 +40,9 @@ def test_models_are_in_build_order_and_layers():
     names = [m.name for m in list_models(SQL_DIR)]
     assert names == [
         "stg_events", "stg_items", "int_purchases", "int_device_days", "int_identity", "fct_sessions",
-        "fct_orders", "fct_order_items", "mart_campaign_daily", "mart_funnel_daily",
+        "fct_orders", "fct_order_items", "mart_campaign_daily", "mart_funnel_daily", "mart_kpi_daily", "mart_tag_health_daily",
     ]
-    assert [m.layer for m in list_models(SQL_DIR)] == ["staging"] * 5 + ["marts"] * 5
+    assert [m.layer for m in list_models(SQL_DIR)] == ["staging"] * 5 + ["marts"] * 7
     with pytest.raises(TemplateError):
         Model(SQL_DIR / "models" / "99_other.sql").layer
 

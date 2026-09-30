@@ -118,6 +118,56 @@ def run_incremental(cfg: Config, client) -> list[dict[str, Any]]:
     return [asdict(s) for s in result.stats]
 
 
+def run_detect(cfg: Config, client, as_of: date | None = None) -> dict[str, Any]:
+    """Stage 5's detect step (`make alerts`' first half): the anomaly rules over the monitoring marts, kpi_alerts
+    replaced. `as_of`: the site's export day the run waited for; a day up to it with no data is a no_data alert (the
+    export that never came, when the sensor gave up). Reads through the table-data API and writes with a load job: no
+    query is billed."""
+    from dataclasses import asdict
+
+    from tagline_pipeline import alerts
+    from tagline_pipeline.bq import BigQuery
+
+    bq = BigQuery(cfg, client=client, extra_labels={"orchestrator": "airflow"})
+    return asdict(alerts.detect_and_store(cfg, bq, as_of=as_of))
+
+
+def run_notify(cfg: Config, client, as_of: date, run_problems: list[str] | None = None) -> dict[str, Any]:
+    """Stage 5's notify step: the alerts that are news on `as_of` and not sent yet, headed by the run's failed tasks, to
+    TAGLINE_ALERT_WEBHOOK_URL when it is set, otherwise to the task log; returns the summary run_summary prints."""
+    from tagline_pipeline import alerts
+    from tagline_pipeline.bq import BigQuery
+
+    bq = BigQuery(cfg, client=client, extra_labels={"orchestrator": "airflow"})
+    result = alerts.notify(cfg, bq, as_of, cfg.alert_webhook_url, run_problems=run_problems or ())
+    return result.summary()
+
+
+def alert_failure(summary: dict[str, Any] | None, fail_on_alert: bool) -> str | None:
+    """The message a run fails with when `fail_on_alert` is on and this run sent alerts; None otherwise (the default:
+    alert and continue). Only what this run sent counts: an alert sent by an earlier run is still news for a few days,
+    and counting it would fail every run of those days, and a clean rerun of the same day."""
+    if not fail_on_alert or not summary or not summary.get("new"):
+        return None
+    return (f"{summary['new']} alert(s) sent by this run as of {summary['as_of']} ({summary['critical']} of the "
+            f"{summary['fresh']} still news critical; delivery {summary['delivery']}) and fail_on_alert is on")
+
+
+def failed_so_far(ti) -> list[str]:
+    """This run's tasks that have failed, or could not run because an upstream failed, by the time notify_alerts runs
+    (the build, a data check, detect_anomalies; the Spark branch too if it has already failed): the message's first
+    line. [] when the states cannot be read, since a report must not stop the delivery."""
+    from tagline_airflow.summary import failed_tasks, run_states
+
+    try:
+        states = run_states(ti.get_task_states(dag_id=ti.dag_id, run_ids=[ti.run_id]), ti.run_id)
+    except Exception as e:  # noqa: BLE001
+        print(f"could not read this run's task states ({e}); the message lists no failed task")
+        return []
+    states.pop(ti.task_id, None)
+    return failed_tasks(states)
+
+
 def prepare_sources(cfg: Config, client) -> dict[str, list[str]] | None:
     """What `make build` does before the first model: create the three datasets if missing (and align
     their descriptions and labels), then list the site export's tables. Returns the XCom form."""

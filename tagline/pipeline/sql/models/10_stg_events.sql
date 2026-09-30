@@ -31,6 +31,13 @@
 -- @column page_title: Event param page_title.
 -- @column page_referrer: Event param page_referrer.
 -- @column search_term: Event param search_term (search / view_search_results). <obfuscated> in the sample.
+-- @column method: Event param method (login / sign_up). Stage 5: read so the tag health mart can check the
+--     contract's required parameters on the collected data.
+-- @column item_list_id: Event param item_list_id (view_item_list / select_item; GA4 also copies it into each
+--     item's item_list_id). Stage 5, as method.
+-- @column item_list_name: Event param item_list_name, as item_list_id. Stage 5.
+-- @column shipping_tier: Event param shipping_tier (add_shipping_info). Stage 5.
+-- @column payment_type: Event param payment_type (add_payment_info). Stage 5.
 -- @column engagement_time_msec: Event param engagement_time_msec.
 -- @column session_engaged: TRUE when the event carries session_engaged = 1 (GA4's engaged-session flag;
 --     the sample stores it as a string on most events and an integer on some).
@@ -191,6 +198,11 @@ with_params AS (
         MAX(IF(key = 'page_title', string_value, NULL)) AS page_title,
         MAX(IF(key = 'page_referrer', string_value, NULL)) AS page_referrer,
         MAX(IF(key = 'search_term', string_value, NULL)) AS search_term,
+        MAX(IF(key = 'method', string_value, NULL)) AS method,
+        MAX(IF(key = 'item_list_id', string_value, NULL)) AS item_list_id,
+        MAX(IF(key = 'item_list_name', string_value, NULL)) AS item_list_name,
+        MAX(IF(key = 'shipping_tier', string_value, NULL)) AS shipping_tier,
+        MAX(IF(key = 'payment_type', string_value, NULL)) AS payment_type,
         MAX(IF(key = 'engagement_time_msec', COALESCE(int_value, SAFE_CAST(string_value AS INT64)), NULL)) AS engagement_time_msec,
         MAX(IF(key = 'session_engaged', COALESCE(string_value, CAST(int_value AS STRING)), NULL)) AS session_engaged,
         MAX(IF(key = 'source', string_value, NULL)) AS source,
@@ -228,6 +240,11 @@ flattened AS (
     p.page_title,
     p.page_referrer,
     p.search_term,
+    p.method,
+    p.item_list_id,
+    p.item_list_name,
+    p.shipping_tier,
+    p.payment_type,
     p.engagement_time_msec,
     p.session_engaged IN ('1', 'true') AS session_engaged,
     COALESCE(ctc_source, p.source) AS collected_source,
@@ -313,6 +330,7 @@ SELECT
   d.source, d.event_key, d.export_row_count, d.export_table, d.event_date, d.event_timestamp, d.event_name,
   d.user_pseudo_id, d.user_id, d.ga_session_id, d.ga_session_number, d.session_key,
   d.page_location, d.page_path, d.page_title, d.page_referrer, d.search_term,
+  d.method, d.item_list_id, d.item_list_name, d.shipping_tier, d.payment_type,
   d.engagement_time_msec, d.session_engaged,
   d.collected_source, d.collected_medium, d.collected_campaign, d.collected_term,
   d.session_last_click_source, d.session_last_click_medium, d.session_last_click_campaign,

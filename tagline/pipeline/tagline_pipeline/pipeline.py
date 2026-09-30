@@ -9,7 +9,7 @@ from pathlib import Path
 
 from google.api_core.exceptions import NotFound
 
-from . import incremental
+from . import contract, incremental
 from .bq import BigQuery
 from .config import SAMPLE_TABLE, SQL_DIR, Config
 from .costs import JobStat
@@ -50,7 +50,11 @@ def context(cfg: Config, site: SiteTables | None) -> dict[str, object]:
         "site_union": site_union_sql(cfg, site),
         # Hooks the daily incremental build fills in (tagline_pipeline/incremental.py); a full build leaves them empty.
         "incremental_filter": "",
+        "incremental_filter_sessions": "",
+        "incremental_filter_orders": "",
         "purchase_history": "",
+        # mart_tag_health_daily's checks, generated from tagging/events.schema.json (Stage 5)
+        **contract.template_context(),
     }
 
 

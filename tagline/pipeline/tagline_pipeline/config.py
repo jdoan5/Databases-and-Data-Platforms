@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 PIPELINE_DIR = Path(__file__).resolve().parents[1]
@@ -75,6 +75,8 @@ class Config:
     raw_dataset: str = RAW_DATASET
     staging_dataset: str = STAGING_DATASET
     marts_dataset: str = MARTS_DATASET
+    # Stage 5: where alerts are POSTed (Slack / Discord / Teams incoming webhook). A secret: never printed.
+    alert_webhook_url: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not _PROJECT_RE.fullmatch(self.project):
@@ -95,6 +97,8 @@ class Config:
             raise ConfigError("sample start is after sample end")
         if self.max_bytes_billed <= 0:
             raise ConfigError("TAGLINE_MAX_BYTES_BILLED must be a positive number of bytes")
+        if self.alert_webhook_url is not None and not re.fullmatch(r"https?://[^\s/]+(/\S*)?", self.alert_webhook_url):
+            raise ConfigError("TAGLINE_ALERT_WEBHOOK_URL is not an http(s) URL")
 
     @property
     def has_site(self) -> bool:
@@ -137,6 +141,7 @@ def load_config(
         "ga4_dataset": get("TAGLINE_GA4_DATASET"),
         "ga4_project": get("TAGLINE_GA4_PROJECT"),
         "max_bytes_billed": max_bytes_billed,
+        "alert_webhook_url": get("TAGLINE_ALERT_WEBHOOK_URL"),
     }
     kwargs.update({k: v for k, v in overrides.items() if v is not None})
     return Config(**kwargs)  # type: ignore[arg-type]

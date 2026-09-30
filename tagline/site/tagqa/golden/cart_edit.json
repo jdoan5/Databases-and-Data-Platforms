@@ -1,0 +1,368 @@
+{
+  "journey": "cart_edit",
+  "title": "Two products in the cart, then +, − and Remove",
+  "note": "Written by `npm run tagqa:update` (tagline/site/tagqa). The dataLayer of each page load, with GA4 forwarding off. Placeholders: <origin> is the dev server, <transaction_id:n> and <user_id:n> the n-th distinct id in the journey.",
+  "loads": [
+    {
+      "pushes": [
+        [
+          "consent",
+          "default",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        {
+          "event": "page_view",
+          "page_location": "<origin>/category/bags",
+          "page_title": "Bags · Tagline Supply"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item_list",
+          "ecommerce": {
+            "currency": "USD",
+            "item_list_id": "category_bags",
+            "item_list_name": "Bags",
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 1,
+                "index": 0
+              },
+              {
+                "item_id": "TL-BAG-002",
+                "item_name": "Everyday Backpack",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 72,
+                "quantity": 1,
+                "index": 1
+              },
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1,
+                "index": 2
+              },
+              {
+                "item_id": "TL-BAG-004",
+                "item_name": "Packable Duffel",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 48,
+                "quantity": 1,
+                "index": 3
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "select_item",
+          "ecommerce": {
+            "currency": "USD",
+            "item_list_id": "category_bags",
+            "item_list_name": "Bags",
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 1,
+                "index": 0
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/product/TL-BAG-001",
+          "page_title": "Canvas Tote, Natural · Tagline Supply",
+          "page_referrer": "<origin>/category/bags"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 19.99,
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 99.95,
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 5
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/category/bags",
+          "page_title": "Bags · Tagline Supply",
+          "page_referrer": "<origin>/product/TL-BAG-001"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item_list",
+          "ecommerce": {
+            "currency": "USD",
+            "item_list_id": "category_bags",
+            "item_list_name": "Bags",
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 1,
+                "index": 0
+              },
+              {
+                "item_id": "TL-BAG-002",
+                "item_name": "Everyday Backpack",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 72,
+                "quantity": 1,
+                "index": 1
+              },
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1,
+                "index": 2
+              },
+              {
+                "item_id": "TL-BAG-004",
+                "item_name": "Packable Duffel",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 48,
+                "quantity": 1,
+                "index": 3
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "select_item",
+          "ecommerce": {
+            "currency": "USD",
+            "item_list_id": "category_bags",
+            "item_list_name": "Bags",
+            "items": [
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1,
+                "index": 2
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/product/TL-BAG-003",
+          "page_title": "Laptop Sleeve 14 in · Tagline Supply",
+          "page_referrer": "<origin>/category/bags"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 34,
+            "items": [
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 34,
+            "items": [
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/cart",
+          "page_title": "Cart · Tagline Supply",
+          "page_referrer": "<origin>/product/TL-BAG-003"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 133.95,
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 5
+              },
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 19.99,
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "remove_from_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 34,
+            "items": [
+              {
+                "item_id": "TL-BAG-003",
+                "item_name": "Laptop Sleeve 14 in",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "price": 34,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "remove_from_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 119.94,
+            "items": [
+              {
+                "item_id": "TL-BAG-001",
+                "item_name": "Canvas Tote",
+                "item_brand": "Tagline Supply",
+                "item_category": "Bags",
+                "item_variant": "Natural",
+                "price": 19.99,
+                "quantity": 6
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

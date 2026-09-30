@@ -1,0 +1,247 @@
+{
+  "journey": "confirmation_revisit",
+  "title": "Purchase, then Back, Forward and reload on the confirmation page",
+  "note": "Written by `npm run tagqa:update` (tagline/site/tagqa). The dataLayer of each page load, with GA4 forwarding off. Placeholders: <origin> is the dev server, <transaction_id:n> and <user_id:n> the n-th distinct id in the journey.",
+  "loads": [
+    {
+      "pushes": [
+        [
+          "consent",
+          "default",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        {
+          "event": "page_view",
+          "page_location": "<origin>/product/TL-OFF-003",
+          "page_title": "Desk Mat, Graphite · Tagline Supply"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_item",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 26,
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        [
+          "consent",
+          "update",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_to_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 26,
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/cart",
+          "page_title": "Cart · Tagline Supply",
+          "page_referrer": "<origin>/product/TL-OFF-003"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "view_cart",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 26,
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/checkout",
+          "page_title": "Checkout · Tagline Supply",
+          "page_referrer": "<origin>/cart"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "begin_checkout",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 26,
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_shipping_info",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 26,
+            "shipping_tier": "Ground",
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "add_payment_info",
+          "ecommerce": {
+            "currency": "USD",
+            "value": 26,
+            "payment_type": "PayPal",
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/order/<transaction_id:1>",
+          "page_title": "Order confirmed · Tagline Supply",
+          "page_referrer": "<origin>/checkout"
+        },
+        {
+          "ecommerce": null
+        },
+        {
+          "event": "purchase",
+          "ecommerce": {
+            "transaction_id": "<transaction_id:1>",
+            "currency": "USD",
+            "value": 26,
+            "tax": 2.08,
+            "shipping": 5,
+            "items": [
+              {
+                "item_id": "TL-OFF-003",
+                "item_name": "Desk Mat",
+                "item_brand": "Tagline Supply",
+                "item_category": "Office",
+                "item_variant": "Graphite",
+                "price": 26,
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/cart",
+          "page_title": "Cart · Tagline Supply",
+          "page_referrer": "<origin>/order/<transaction_id:1>"
+        },
+        {
+          "event": "page_view",
+          "page_location": "<origin>/order/<transaction_id:1>",
+          "page_title": "Order confirmed · Tagline Supply",
+          "page_referrer": "<origin>/cart"
+        }
+      ]
+    },
+    {
+      "pushes": [
+        [
+          "consent",
+          "default",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        [
+          "consent",
+          "update",
+          {
+            "analytics_storage": "denied",
+            "ad_storage": "denied",
+            "ad_user_data": "denied",
+            "ad_personalization": "denied"
+          }
+        ],
+        {
+          "event": "page_view",
+          "page_location": "<origin>/order/<transaction_id:1>",
+          "page_title": "Order confirmed · Tagline Supply"
+        }
+      ]
+    }
+  ]
+}

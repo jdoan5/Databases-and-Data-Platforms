@@ -1,0 +1,2966 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-09-30T22:33:41Z",
+ "generator": "tagline/dashboard/export_snapshot.py (make dashboard-snapshot)",
+ "export_cost": {
+  "query_jobs": 6,
+  "bytes_processed": 2449798,
+  "bytes_billed": 62914560,
+  "max_bytes_billed": 200000000
+ },
+ "tables": [
+  {
+   "name": "mart_kpi_daily",
+   "rows": 93,
+   "last_modified": "2026-09-30T16:09:06Z"
+  },
+  {
+   "name": "mart_funnel_daily",
+   "rows": 93,
+   "last_modified": "2026-09-30T16:09:06Z"
+  },
+  {
+   "name": "mart_campaign_daily",
+   "rows": 2639,
+   "last_modified": "2026-09-30T16:09:06Z"
+  },
+  {
+   "name": "mart_attribution_daily",
+   "rows": 5556,
+   "last_modified": "2026-09-30T15:00:56Z"
+  },
+  {
+   "name": "mart_tag_health_daily",
+   "rows": 8655,
+   "last_modified": "2026-09-30T16:09:06Z"
+  },
+  {
+   "name": "kpi_alerts",
+   "rows": 114,
+   "last_modified": "2026-09-30T16:26:32Z"
+  }
+ ],
+ "sources": {
+  "ga4_sample": {
+   "label": "GA4 sample: Google Merchandise Store",
+   "short": "GA4 sample",
+   "synthetic": false,
+   "description": "Google's public GA4 sample export (bigquery-public-data.ga4_obfuscated_sample_ecommerce): real store traffic, obfuscated by Google. No user_id, so every person is one device; revenue and some values are obfuscated, so the numbers show the pipeline working, not how Google's store performed.",
+   "first_date": "2020-11-01",
+   "last_date": "2021-01-31",
+   "days": 92
+  },
+  "tagline_site": {
+   "label": "Tagline Supply: the site's own GA4 export",
+   "short": "Site (synthetic)",
+   "synthetic": true,
+   "description": "The tagged React storefront's own GA4 property, exported daily to BigQuery. Every visit, order and account in it is synthetic: seeded simulator shoppers driving the real site in Chrome on one machine. Campaign spend is synthetic too.",
+   "first_date": "2026-09-27",
+   "last_date": "2026-09-27",
+   "days": 1
+  }
+ },
+ "kpis": {
+  "ga4_sample": {
+   "first_date": "2020-11-01",
+   "last_date": "2021-01-31",
+   "days": 92,
+   "sessions": 360129,
+   "engaged_sessions": 320096,
+   "converted_sessions": 4446,
+   "add_to_cart_sessions": 15188,
+   "checkout_sessions": 11106,
+   "orders": 4918,
+   "revenue_usd": 340145.0,
+   "cookieless_orders": 0,
+   "events": null,
+   "consented_events": null,
+   "engaged_session_rate": 0.888837,
+   "conversion_rate": 0.012346,
+   "add_to_cart_rate": 0.042174,
+   "aov_usd": 69.16,
+   "cookieless_order_share": 0.0,
+   "consent_accept_share": null
+  },
+  "tagline_site": {
+   "first_date": "2026-09-27",
+   "last_date": "2026-09-27",
+   "days": 1,
+   "sessions": 48,
+   "engaged_sessions": 45,
+   "converted_sessions": 8,
+   "add_to_cart_sessions": 21,
+   "checkout_sessions": 13,
+   "orders": 13,
+   "revenue_usd": 840.93,
+   "cookieless_orders": 5,
+   "events": 1433,
+   "consented_events": 1018,
+   "engaged_session_rate": 0.9375,
+   "conversion_rate": 0.166667,
+   "add_to_cart_rate": 0.4375,
+   "aov_usd": 64.69,
+   "cookieless_order_share": 0.384615,
+   "consent_accept_share": 0.710398
+  }
+ },
+ "daily": {
+  "ga4_sample": [
+   {
+    "date": "2020-11-01",
+    "sessions": 2625,
+    "orders": 14,
+    "revenue_usd": 773.0,
+    "conversion_rate": 0.004952,
+    "add_to_cart_rate": 0.000381,
+    "checkout_to_purchase_rate": 0.136842
+   },
+   {
+    "date": "2020-11-02",
+    "sessions": 3726,
+    "orders": 48,
+    "revenue_usd": 4724.0,
+    "conversion_rate": 0.010735,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.307692
+   },
+   {
+    "date": "2020-11-03",
+    "sessions": 5347,
+    "orders": 49,
+    "revenue_usd": 3313.0,
+    "conversion_rate": 0.008977,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.333333
+   },
+   {
+    "date": "2020-11-04",
+    "sessions": 4325,
+    "orders": 46,
+    "revenue_usd": 2197.0,
+    "conversion_rate": 0.006474,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.237288
+   },
+   {
+    "date": "2020-11-05",
+    "sessions": 3840,
+    "orders": 26,
+    "revenue_usd": 1792.0,
+    "conversion_rate": 0.006771,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.204724
+   },
+   {
+    "date": "2020-11-06",
+    "sessions": 3319,
+    "orders": 58,
+    "revenue_usd": 3438.0,
+    "conversion_rate": 0.014462,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.311688
+   },
+   {
+    "date": "2020-11-07",
+    "sessions": 2271,
+    "orders": 29,
+    "revenue_usd": 2298.0,
+    "conversion_rate": 0.012329,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.252252
+   },
+   {
+    "date": "2020-11-08",
+    "sessions": 2163,
+    "orders": 31,
+    "revenue_usd": 3556.0,
+    "conversion_rate": 0.014332,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.31
+   },
+   {
+    "date": "2020-11-09",
+    "sessions": 3271,
+    "orders": 52,
+    "revenue_usd": 2154.0,
+    "conversion_rate": 0.013146,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.318519
+   },
+   {
+    "date": "2020-11-10",
+    "sessions": 3824,
+    "orders": 63,
+    "revenue_usd": 4041.0,
+    "conversion_rate": 0.016213,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.358382
+   },
+   {
+    "date": "2020-11-11",
+    "sessions": 3809,
+    "orders": 63,
+    "revenue_usd": 4428.0,
+    "conversion_rate": 0.016277,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.380368
+   },
+   {
+    "date": "2020-11-12",
+    "sessions": 3693,
+    "orders": 54,
+    "revenue_usd": 3349.0,
+    "conversion_rate": 0.01381,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.301775
+   },
+   {
+    "date": "2020-11-13",
+    "sessions": 3338,
+    "orders": 78,
+    "revenue_usd": 5750.0,
+    "conversion_rate": 0.020671,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.370968
+   },
+   {
+    "date": "2020-11-14",
+    "sessions": 2360,
+    "orders": 30,
+    "revenue_usd": 2338.0,
+    "conversion_rate": 0.012288,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.273585
+   },
+   {
+    "date": "2020-11-15",
+    "sessions": 2213,
+    "orders": 21,
+    "revenue_usd": 1483.0,
+    "conversion_rate": 0.010393,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.209091
+   },
+   {
+    "date": "2020-11-16",
+    "sessions": 3532,
+    "orders": 69,
+    "revenue_usd": 5046.0,
+    "conversion_rate": 0.018969,
+    "add_to_cart_rate": 0.009909,
+    "checkout_to_purchase_rate": 0.406061
+   },
+   {
+    "date": "2020-11-17",
+    "sessions": 4063,
+    "orders": 98,
+    "revenue_usd": 6227.0,
+    "conversion_rate": 0.020921,
+    "add_to_cart_rate": 0.060793,
+    "checkout_to_purchase_rate": 0.425
+   },
+   {
+    "date": "2020-11-18",
+    "sessions": 4126,
+    "orders": 58,
+    "revenue_usd": 4153.0,
+    "conversion_rate": 0.011876,
+    "add_to_cart_rate": 0.05017,
+    "checkout_to_purchase_rate": 0.308176
+   },
+   {
+    "date": "2020-11-19",
+    "sessions": 4189,
+    "orders": 41,
+    "revenue_usd": 2915.0,
+    "conversion_rate": 0.010026,
+    "add_to_cart_rate": 0.00931,
+    "checkout_to_purchase_rate": 0.330709
+   },
+   {
+    "date": "2020-11-20",
+    "sessions": 4127,
+    "orders": 53,
+    "revenue_usd": 4396.0,
+    "conversion_rate": 0.012115,
+    "add_to_cart_rate": 0.000727,
+    "checkout_to_purchase_rate": 0.310559
+   },
+   {
+    "date": "2020-11-21",
+    "sessions": 3190,
+    "orders": 33,
+    "revenue_usd": 2168.0,
+    "conversion_rate": 0.010031,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.256
+   },
+   {
+    "date": "2020-11-22",
+    "sessions": 2687,
+    "orders": 29,
+    "revenue_usd": 1714.0,
+    "conversion_rate": 0.010048,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.247706
+   },
+   {
+    "date": "2020-11-23",
+    "sessions": 3960,
+    "orders": 69,
+    "revenue_usd": 4241.0,
+    "conversion_rate": 0.015404,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.354651
+   },
+   {
+    "date": "2020-11-24",
+    "sessions": 4422,
+    "orders": 106,
+    "revenue_usd": 7382.0,
+    "conversion_rate": 0.021483,
+    "add_to_cart_rate": 0.0,
+    "checkout_to_purchase_rate": 0.452381
+   },
+   {
+    "date": "2020-11-25",
+    "sessions": 4604,
+    "orders": 95,
+    "revenue_usd": 7674.0,
+    "conversion_rate": 0.017811,
+    "add_to_cart_rate": 0.017376,
+    "checkout_to_purchase_rate": 0.364444
+   },
+   {
+    "date": "2020-11-26",
+    "sessions": 4177,
+    "orders": 54,
+    "revenue_usd": 4133.0,
+    "conversion_rate": 0.012689,
+    "add_to_cart_rate": 0.06871,
+    "checkout_to_purchase_rate": 0.277487
+   },
+   {
+    "date": "2020-11-27",
+    "sessions": 3977,
+    "orders": 90,
+    "revenue_usd": 6523.0,
+    "conversion_rate": 0.021373,
+    "add_to_cart_rate": 0.082474,
+    "checkout_to_purchase_rate": 0.438144
+   },
+   {
+    "date": "2020-11-28",
+    "sessions": 3387,
+    "orders": 70,
+    "revenue_usd": 6255.0,
+    "conversion_rate": 0.019486,
+    "add_to_cart_rate": 0.082964,
+    "checkout_to_purchase_rate": 0.415094
+   },
+   {
+    "date": "2020-11-29",
+    "sessions": 3253,
+    "orders": 49,
+    "revenue_usd": 3862.0,
+    "conversion_rate": 0.014448,
+    "add_to_cart_rate": 0.082078,
+    "checkout_to_purchase_rate": 0.370079
+   },
+   {
+    "date": "2020-11-30",
+    "sessions": 4583,
+    "orders": 134,
+    "revenue_usd": 11956.0,
+    "conversion_rate": 0.02662,
+    "add_to_cart_rate": 0.09317,
+    "checkout_to_purchase_rate": 0.506224
+   },
+   {
+    "date": "2020-12-01",
+    "sessions": 4983,
+    "orders": 96,
+    "revenue_usd": 6203.0,
+    "conversion_rate": 0.017861,
+    "add_to_cart_rate": 0.092515,
+    "checkout_to_purchase_rate": 0.385281
+   },
+   {
+    "date": "2020-12-02",
+    "sessions": 4801,
+    "orders": 77,
+    "revenue_usd": 5144.0,
+    "conversion_rate": 0.014997,
+    "add_to_cart_rate": 0.08165,
+    "checkout_to_purchase_rate": 0.344498
+   },
+   {
+    "date": "2020-12-03",
+    "sessions": 5182,
+    "orders": 86,
+    "revenue_usd": 4277.0,
+    "conversion_rate": 0.016017,
+    "add_to_cart_rate": 0.077769,
+    "checkout_to_purchase_rate": 0.364035
+   },
+   {
+    "date": "2020-12-04",
+    "sessions": 4714,
+    "orders": 92,
+    "revenue_usd": 6398.0,
+    "conversion_rate": 0.017607,
+    "add_to_cart_rate": 0.081247,
+    "checkout_to_purchase_rate": 0.419192
+   },
+   {
+    "date": "2020-12-05",
+    "sessions": 3498,
+    "orders": 84,
+    "revenue_usd": 6325.0,
+    "conversion_rate": 0.021155,
+    "add_to_cart_rate": 0.084334,
+    "checkout_to_purchase_rate": 0.430233
+   },
+   {
+    "date": "2020-12-06",
+    "sessions": 3327,
+    "orders": 41,
+    "revenue_usd": 2328.0,
+    "conversion_rate": 0.012023,
+    "add_to_cart_rate": 0.077547,
+    "checkout_to_purchase_rate": 0.285714
+   },
+   {
+    "date": "2020-12-07",
+    "sessions": 5451,
+    "orders": 104,
+    "revenue_usd": 8415.0,
+    "conversion_rate": 0.016511,
+    "add_to_cart_rate": 0.068061,
+    "checkout_to_purchase_rate": 0.441176
+   },
+   {
+    "date": "2020-12-08",
+    "sessions": 7562,
+    "orders": 120,
+    "revenue_usd": 8687.0,
+    "conversion_rate": 0.014017,
+    "add_to_cart_rate": 0.061756,
+    "checkout_to_purchase_rate": 0.398496
+   },
+   {
+    "date": "2020-12-09",
+    "sessions": 6282,
+    "orders": 141,
+    "revenue_usd": 10487.0,
+    "conversion_rate": 0.020376,
+    "add_to_cart_rate": 0.067494,
+    "checkout_to_purchase_rate": 0.496124
+   },
+   {
+    "date": "2020-12-10",
+    "sessions": 5993,
+    "orders": 136,
+    "revenue_usd": 10698.0,
+    "conversion_rate": 0.020858,
+    "add_to_cart_rate": 0.076089,
+    "checkout_to_purchase_rate": 0.468165
+   },
+   {
+    "date": "2020-12-11",
+    "sessions": 5607,
+    "orders": 155,
+    "revenue_usd": 10400.0,
+    "conversion_rate": 0.025147,
+    "add_to_cart_rate": 0.076512,
+    "checkout_to_purchase_rate": 0.542308
+   },
+   {
+    "date": "2020-12-12",
+    "sessions": 4135,
+    "orders": 101,
+    "revenue_usd": 6284.0,
+    "conversion_rate": 0.022733,
+    "add_to_cart_rate": 0.075695,
+    "checkout_to_purchase_rate": 0.489583
+   },
+   {
+    "date": "2020-12-13",
+    "sessions": 3699,
+    "orders": 68,
+    "revenue_usd": 4395.0,
+    "conversion_rate": 0.01568,
+    "add_to_cart_rate": 0.069208,
+    "checkout_to_purchase_rate": 0.42963
+   },
+   {
+    "date": "2020-12-14",
+    "sessions": 5098,
+    "orders": 92,
+    "revenue_usd": 8407.0,
+    "conversion_rate": 0.015889,
+    "add_to_cart_rate": 0.074343,
+    "checkout_to_purchase_rate": 0.433155
+   },
+   {
+    "date": "2020-12-15",
+    "sessions": 5741,
+    "orders": 132,
+    "revenue_usd": 9610.0,
+    "conversion_rate": 0.019683,
+    "add_to_cart_rate": 0.070894,
+    "checkout_to_purchase_rate": 0.585492
+   },
+   {
+    "date": "2020-12-16",
+    "sessions": 5528,
+    "orders": 142,
+    "revenue_usd": 11479.0,
+    "conversion_rate": 0.020803,
+    "add_to_cart_rate": 0.06042,
+    "checkout_to_purchase_rate": 0.628415
+   },
+   {
+    "date": "2020-12-17",
+    "sessions": 5345,
+    "orders": 123,
+    "revenue_usd": 6595.0,
+    "conversion_rate": 0.017212,
+    "add_to_cart_rate": 0.063985,
+    "checkout_to_purchase_rate": 0.585987
+   },
+   {
+    "date": "2020-12-18",
+    "sessions": 4824,
+    "orders": 105,
+    "revenue_usd": 6591.0,
+    "conversion_rate": 0.016169,
+    "add_to_cart_rate": 0.066335,
+    "checkout_to_purchase_rate": 0.509804
+   },
+   {
+    "date": "2020-12-19",
+    "sessions": 3587,
+    "orders": 50,
+    "revenue_usd": 2767.0,
+    "conversion_rate": 0.010315,
+    "add_to_cart_rate": 0.051296,
+    "checkout_to_purchase_rate": 0.411111
+   },
+   {
+    "date": "2020-12-20",
+    "sessions": 3288,
+    "orders": 19,
+    "revenue_usd": 1399.0,
+    "conversion_rate": 0.005474,
+    "add_to_cart_rate": 0.038625,
+    "checkout_to_purchase_rate": 0.346154
+   },
+   {
+    "date": "2020-12-21",
+    "sessions": 4006,
+    "orders": 50,
+    "revenue_usd": 3383.0,
+    "conversion_rate": 0.012232,
+    "add_to_cart_rate": 0.050175,
+    "checkout_to_purchase_rate": 0.550562
+   },
+   {
+    "date": "2020-12-22",
+    "sessions": 3838,
+    "orders": 56,
+    "revenue_usd": 3071.0,
+    "conversion_rate": 0.013549,
+    "add_to_cart_rate": 0.057061,
+    "checkout_to_purchase_rate": 0.541667
+   },
+   {
+    "date": "2020-12-23",
+    "sessions": 3443,
+    "orders": 67,
+    "revenue_usd": 4418.0,
+    "conversion_rate": 0.015394,
+    "add_to_cart_rate": 0.060703,
+    "checkout_to_purchase_rate": 0.576087
+   },
+   {
+    "date": "2020-12-24",
+    "sessions": 2798,
+    "orders": 22,
+    "revenue_usd": 1192.0,
+    "conversion_rate": 0.007505,
+    "add_to_cart_rate": 0.036097,
+    "checkout_to_purchase_rate": 0.538462
+   },
+   {
+    "date": "2020-12-25",
+    "sessions": 2645,
+    "orders": 16,
+    "revenue_usd": 552.0,
+    "conversion_rate": 0.006049,
+    "add_to_cart_rate": 0.030624,
+    "checkout_to_purchase_rate": 0.444444
+   },
+   {
+    "date": "2020-12-26",
+    "sessions": 2676,
+    "orders": 15,
+    "revenue_usd": 725.0,
+    "conversion_rate": 0.005605,
+    "add_to_cart_rate": 0.028027,
+    "checkout_to_purchase_rate": 0.6
+   },
+   {
+    "date": "2020-12-27",
+    "sessions": 2677,
+    "orders": 20,
+    "revenue_usd": 1161.0,
+    "conversion_rate": 0.007471,
+    "add_to_cart_rate": 0.036982,
+    "checkout_to_purchase_rate": 0.512821
+   },
+   {
+    "date": "2020-12-28",
+    "sessions": 3356,
+    "orders": 34,
+    "revenue_usd": 2018.0,
+    "conversion_rate": 0.009535,
+    "add_to_cart_rate": 0.038439,
+    "checkout_to_purchase_rate": 0.666667
+   },
+   {
+    "date": "2020-12-29",
+    "sessions": 3435,
+    "orders": 24,
+    "revenue_usd": 1418.0,
+    "conversion_rate": 0.006114,
+    "add_to_cart_rate": 0.036972,
+    "checkout_to_purchase_rate": 0.5
+   },
+   {
+    "date": "2020-12-30",
+    "sessions": 3213,
+    "orders": 21,
+    "revenue_usd": 1582.0,
+    "conversion_rate": 0.005913,
+    "add_to_cart_rate": 0.03517,
+    "checkout_to_purchase_rate": 0.5
+   },
+   {
+    "date": "2020-12-31",
+    "sessions": 2619,
+    "orders": 24,
+    "revenue_usd": 2577.0,
+    "conversion_rate": 0.0084,
+    "add_to_cart_rate": 0.035892,
+    "checkout_to_purchase_rate": 0.511628
+   },
+   {
+    "date": "2021-01-01",
+    "sessions": 2308,
+    "orders": 13,
+    "revenue_usd": 961.0,
+    "conversion_rate": 0.005199,
+    "add_to_cart_rate": 0.029463,
+    "checkout_to_purchase_rate": 0.461538
+   },
+   {
+    "date": "2021-01-02",
+    "sessions": 2728,
+    "orders": 13,
+    "revenue_usd": 1026.0,
+    "conversion_rate": 0.004765,
+    "add_to_cart_rate": 0.023827,
+    "checkout_to_purchase_rate": 0.40625
+   },
+   {
+    "date": "2021-01-03",
+    "sessions": 2785,
+    "orders": 13,
+    "revenue_usd": 552.0,
+    "conversion_rate": 0.005027,
+    "add_to_cart_rate": 0.021185,
+    "checkout_to_purchase_rate": 0.4375
+   },
+   {
+    "date": "2021-01-04",
+    "sessions": 3367,
+    "orders": 16,
+    "revenue_usd": 834.0,
+    "conversion_rate": 0.004455,
+    "add_to_cart_rate": 0.029997,
+    "checkout_to_purchase_rate": 0.5
+   },
+   {
+    "date": "2021-01-05",
+    "sessions": 4485,
+    "orders": 27,
+    "revenue_usd": 1119.0,
+    "conversion_rate": 0.00602,
+    "add_to_cart_rate": 0.033891,
+    "checkout_to_purchase_rate": 0.5
+   },
+   {
+    "date": "2021-01-06",
+    "sessions": 5995,
+    "orders": 31,
+    "revenue_usd": 2000.0,
+    "conversion_rate": 0.004504,
+    "add_to_cart_rate": 0.030525,
+    "checkout_to_purchase_rate": 0.415385
+   },
+   {
+    "date": "2021-01-07",
+    "sessions": 4660,
+    "orders": 23,
+    "revenue_usd": 1452.0,
+    "conversion_rate": 0.004936,
+    "add_to_cart_rate": 0.037554,
+    "checkout_to_purchase_rate": 0.370968
+   },
+   {
+    "date": "2021-01-08",
+    "sessions": 4262,
+    "orders": 31,
+    "revenue_usd": 1699.0,
+    "conversion_rate": 0.007039,
+    "add_to_cart_rate": 0.036603,
+    "checkout_to_purchase_rate": 0.483871
+   },
+   {
+    "date": "2021-01-09",
+    "sessions": 3258,
+    "orders": 19,
+    "revenue_usd": 1363.0,
+    "conversion_rate": 0.005218,
+    "add_to_cart_rate": 0.033456,
+    "checkout_to_purchase_rate": 0.435897
+   },
+   {
+    "date": "2021-01-10",
+    "sessions": 3002,
+    "orders": 14,
+    "revenue_usd": 974.0,
+    "conversion_rate": 0.004997,
+    "add_to_cart_rate": 0.027981,
+    "checkout_to_purchase_rate": 0.454545
+   },
+   {
+    "date": "2021-01-11",
+    "sessions": 3953,
+    "orders": 26,
+    "revenue_usd": 1426.0,
+    "conversion_rate": 0.006324,
+    "add_to_cart_rate": 0.040729,
+    "checkout_to_purchase_rate": 0.446429
+   },
+   {
+    "date": "2021-01-12",
+    "sessions": 4721,
+    "orders": 46,
+    "revenue_usd": 2547.0,
+    "conversion_rate": 0.008685,
+    "add_to_cart_rate": 0.036009,
+    "checkout_to_purchase_rate": 0.518987
+   },
+   {
+    "date": "2021-01-13",
+    "sessions": 4570,
+    "orders": 34,
+    "revenue_usd": 1858.0,
+    "conversion_rate": 0.007221,
+    "add_to_cart_rate": 0.039168,
+    "checkout_to_purchase_rate": 0.388235
+   },
+   {
+    "date": "2021-01-14",
+    "sessions": 4363,
+    "orders": 48,
+    "revenue_usd": 3191.0,
+    "conversion_rate": 0.009856,
+    "add_to_cart_rate": 0.046528,
+    "checkout_to_purchase_rate": 0.518072
+   },
+   {
+    "date": "2021-01-15",
+    "sessions": 3935,
+    "orders": 42,
+    "revenue_usd": 2071.0,
+    "conversion_rate": 0.008386,
+    "add_to_cart_rate": 0.042186,
+    "checkout_to_purchase_rate": 0.471429
+   },
+   {
+    "date": "2021-01-16",
+    "sessions": 3177,
+    "orders": 23,
+    "revenue_usd": 1406.0,
+    "conversion_rate": 0.00661,
+    "add_to_cart_rate": 0.037771,
+    "checkout_to_purchase_rate": 0.411765
+   },
+   {
+    "date": "2021-01-17",
+    "sessions": 2988,
+    "orders": 12,
+    "revenue_usd": 481.0,
+    "conversion_rate": 0.004016,
+    "add_to_cart_rate": 0.03012,
+    "checkout_to_purchase_rate": 0.342857
+   },
+   {
+    "date": "2021-01-18",
+    "sessions": 3610,
+    "orders": 17,
+    "revenue_usd": 1182.0,
+    "conversion_rate": 0.004709,
+    "add_to_cart_rate": 0.031025,
+    "checkout_to_purchase_rate": 0.361702
+   },
+   {
+    "date": "2021-01-19",
+    "sessions": 4187,
+    "orders": 45,
+    "revenue_usd": 3756.0,
+    "conversion_rate": 0.010509,
+    "add_to_cart_rate": 0.042751,
+    "checkout_to_purchase_rate": 0.517647
+   },
+   {
+    "date": "2021-01-20",
+    "sessions": 4805,
+    "orders": 83,
+    "revenue_usd": 6662.0,
+    "conversion_rate": 0.017274,
+    "add_to_cart_rate": 0.050572,
+    "checkout_to_purchase_rate": 0.58042
+   },
+   {
+    "date": "2021-01-21",
+    "sessions": 4687,
+    "orders": 50,
+    "revenue_usd": 4206.0,
+    "conversion_rate": 0.010241,
+    "add_to_cart_rate": 0.046512,
+    "checkout_to_purchase_rate": 0.448598
+   },
+   {
+    "date": "2021-01-22",
+    "sessions": 4089,
+    "orders": 91,
+    "revenue_usd": 5413.0,
+    "conversion_rate": 0.020298,
+    "add_to_cart_rate": 0.052336,
+    "checkout_to_purchase_rate": 0.535484
+   },
+   {
+    "date": "2021-01-23",
+    "sessions": 3132,
+    "orders": 41,
+    "revenue_usd": 2747.0,
+    "conversion_rate": 0.012452,
+    "add_to_cart_rate": 0.040868,
+    "checkout_to_purchase_rate": 0.5
+   },
+   {
+    "date": "2021-01-24",
+    "sessions": 2968,
+    "orders": 34,
+    "revenue_usd": 2408.0,
+    "conversion_rate": 0.011119,
+    "add_to_cart_rate": 0.03841,
+    "checkout_to_purchase_rate": 0.478261
+   },
+   {
+    "date": "2021-01-25",
+    "sessions": 3906,
+    "orders": 53,
+    "revenue_usd": 3353.0,
+    "conversion_rate": 0.012545,
+    "add_to_cart_rate": 0.03789,
+    "checkout_to_purchase_rate": 0.583333
+   },
+   {
+    "date": "2021-01-26",
+    "sessions": 4089,
+    "orders": 22,
+    "revenue_usd": 1259.0,
+    "conversion_rate": 0.004891,
+    "add_to_cart_rate": 0.034972,
+    "checkout_to_purchase_rate": 0.229885
+   },
+   {
+    "date": "2021-01-27",
+    "sessions": 4599,
+    "orders": 12,
+    "revenue_usd": 457.0,
+    "conversion_rate": 0.002609,
+    "add_to_cart_rate": 0.051098,
+    "checkout_to_purchase_rate": 0.1
+   },
+   {
+    "date": "2021-01-28",
+    "sessions": 4216,
+    "orders": 5,
+    "revenue_usd": 128.0,
+    "conversion_rate": 0.001186,
+    "add_to_cart_rate": 0.044829,
+    "checkout_to_purchase_rate": 0.05618
+   },
+   {
+    "date": "2021-01-29",
+    "sessions": 3791,
+    "orders": 6,
+    "revenue_usd": 190.0,
+    "conversion_rate": 0.001583,
+    "add_to_cart_rate": 0.042469,
+    "checkout_to_purchase_rate": 0.064516
+   },
+   {
+    "date": "2021-01-30",
+    "sessions": 2900,
+    "orders": 5,
+    "revenue_usd": 159.0,
+    "conversion_rate": 0.001724,
+    "add_to_cart_rate": 0.037586,
+    "checkout_to_purchase_rate": 0.098039
+   },
+   {
+    "date": "2021-01-31",
+    "sessions": 2841,
+    "orders": 0,
+    "revenue_usd": 0.0,
+    "conversion_rate": 0.0,
+    "add_to_cart_rate": 0.036255,
+    "checkout_to_purchase_rate": 0.0
+   }
+  ],
+  "tagline_site": [
+   {
+    "date": "2026-09-27",
+    "sessions": 48,
+    "orders": 13,
+    "revenue_usd": 840.93,
+    "conversion_rate": 0.166667,
+    "add_to_cart_rate": 0.4375,
+    "checkout_to_purchase_rate": 0.615385
+   }
+  ]
+ },
+ "alerts": {
+  "total": 114,
+  "source_days": 31,
+  "by_rule": {
+   "floor": 20,
+   "mad": 94
+  },
+  "by_severity": {
+   "critical": 107,
+   "warning": 7
+  },
+  "by_source": {
+   "ga4_sample": 114,
+   "tagline_site": 0
+  },
+  "days": [
+   {
+    "date": "2020-11-01",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.000381,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-02",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-03",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-04",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-05",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-06",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-07",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-08",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-09",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-10",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-11",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-12",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-13",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-14",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": null
+     }
+    ]
+   },
+   {
+    "date": "2020-11-15",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 0.000187
+     }
+    ]
+   },
+   {
+    "date": "2020-11-18",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.purchase.dedupe:duplicate_transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.132353,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-11-19",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.purchase.dedupe:duplicate_transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.452381,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-11-20",
+    "source": "ga4_sample",
+    "count": 9,
+    "critical": 9,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.000727,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.dedupe:duplicate_transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.449153,
+      "expected": 0.006329
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.tax",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.value",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.101695,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-11-21",
+    "source": "ga4_sample",
+    "count": 2,
+    "critical": 1,
+    "warning": 1,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.dedupe:duplicate_transaction_id",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "up",
+      "value": 0.485294,
+      "expected": 0.032258
+     }
+    ]
+   },
+   {
+    "date": "2020-11-22",
+    "source": "ga4_sample",
+    "count": 2,
+    "critical": 2,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.dedupe:duplicate_transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.483333,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-11-23",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-11-24",
+    "source": "ga4_sample",
+    "count": 2,
+    "critical": 2,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "add_to_cart_rate",
+      "rule": "floor",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.128415,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-11-25",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 1,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.124031,
+      "expected": 0.0
+     }
+    ]
+   },
+   {
+    "date": "2020-12-13",
+    "source": "ga4_sample",
+    "count": 1,
+    "critical": 0,
+    "warning": 1,
+    "max_severity": "warning",
+    "items": [
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "up",
+      "value": 0.333333,
+      "expected": 0.020325
+     }
+    ]
+   },
+   {
+    "date": "2020-12-30",
+    "source": "ga4_sample",
+    "count": 14,
+    "critical": 13,
+    "warning": 1,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.121673,
+      "expected": 0.006791
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.121673,
+      "expected": 0.006791
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.121673,
+      "expected": 0.006791
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.121673,
+      "expected": 0.006791
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.tax",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.value",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.459459,
+      "expected": 0.006993
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.048951
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.405405,
+      "expected": 0.0
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "up",
+      "value": 0.155894,
+      "expected": 0.015606
+     }
+    ]
+   },
+   {
+    "date": "2021-01-26",
+    "source": "ga4_sample",
+    "count": 6,
+    "critical": 6,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.484262,
+      "expected": 0.060748
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.527845,
+      "expected": 0.091684
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.484262,
+      "expected": 0.03271
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.484262,
+      "expected": 0.03271
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.484262,
+      "expected": 0.03271
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.484262,
+      "expected": 0.03271
+     }
+    ]
+   },
+   {
+    "date": "2021-01-27",
+    "source": "ga4_sample",
+    "count": 16,
+    "critical": 15,
+    "warning": 1,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.582061,
+      "expected": 0.042714
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.582061,
+      "expected": 0.095477
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.564885,
+      "expected": 0.020101
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.564885,
+      "expected": 0.020101
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.564885,
+      "expected": 0.020101
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.564885,
+      "expected": 0.020101
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.tax",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.value",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.796296,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.138889
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.777778,
+      "expected": 0.055556
+     },
+     {
+      "metric": "checkout_to_purchase_rate",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "down",
+      "value": 0.1,
+      "expected": 0.415385
+     }
+    ]
+   },
+   {
+    "date": "2021-01-28",
+    "source": "ga4_sample",
+    "count": 16,
+    "critical": 16,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "checkout_to_purchase_rate",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "down",
+      "value": 0.05618,
+      "expected": 0.448598
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.787692,
+      "expected": 0.091684
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.796923,
+      "expected": 0.092486
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.787692,
+      "expected": 0.042895
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.787692,
+      "expected": 0.042895
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.787692,
+      "expected": 0.042895
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.787692,
+      "expected": 0.042895
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.tax",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.value",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.084402
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.942029,
+      "expected": 0.150997
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.927536,
+      "expected": 0.065528
+     }
+    ]
+   },
+   {
+    "date": "2021-01-29",
+    "source": "ga4_sample",
+    "count": 16,
+    "critical": 15,
+    "warning": 1,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.750594,
+      "expected": 0.072848
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.750594,
+      "expected": 0.133117
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.750594,
+      "expected": 0.046358
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.750594,
+      "expected": 0.046358
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.750594,
+      "expected": 0.046358
+     },
+     {
+      "metric": "tag_health.begin_checkout.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.750594,
+      "expected": 0.046358
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.tax",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.value",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.1
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.106383
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.888889,
+      "expected": 0.088235
+     },
+     {
+      "metric": "checkout_to_purchase_rate",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "down",
+      "value": 0.064516,
+      "expected": 0.483871
+     }
+    ]
+   },
+   {
+    "date": "2021-01-30",
+    "source": "ga4_sample",
+    "count": 9,
+    "critical": 9,
+    "warning": 0,
+    "max_severity": "critical",
+    "items": [
+     {
+      "metric": "tag_health.purchase.required:ecommerce.tax",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.transaction_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     },
+     {
+      "metric": "tag_health.purchase.required:ecommerce.value",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_brand",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.111111
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_category",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.145833
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_id",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].item_name",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].price",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     },
+     {
+      "metric": "tag_health.purchase.required:items[].quantity",
+      "rule": "mad",
+      "severity": "critical",
+      "direction": "up",
+      "value": 0.83871,
+      "expected": 0.092593
+     }
+    ]
+   },
+   {
+    "date": "2021-01-31",
+    "source": "ga4_sample",
+    "count": 2,
+    "critical": 0,
+    "warning": 2,
+    "max_severity": "warning",
+    "items": [
+     {
+      "metric": "checkout_to_purchase_rate",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 0.454545
+     },
+     {
+      "metric": "revenue_usd",
+      "rule": "mad",
+      "severity": "warning",
+      "direction": "down",
+      "value": 0.0,
+      "expected": 974.0
+     }
+    ]
+   }
+  ]
+ },
+ "funnel": {
+  "tagline_site": {
+   "first_date": "2026-09-27",
+   "last_date": "2026-09-27",
+   "days": 1,
+   "sessions": 48,
+   "view_item": 37,
+   "add_to_cart": 21,
+   "begin_checkout": 13,
+   "purchase": 8,
+   "converted": 8,
+   "step_rates": {
+    "view_item": 0.770833,
+    "add_to_cart": 0.567568,
+    "begin_checkout": 0.619048,
+    "purchase": 0.615385
+   }
+  },
+  "ga4_sample": {
+   "first_date": "2020-11-01",
+   "last_date": "2021-01-31",
+   "days": 92,
+   "sessions": 360129,
+   "view_item": 77020,
+   "add_to_cart": 15173,
+   "begin_checkout": 5959,
+   "purchase": 2573,
+   "converted": 4446,
+   "step_rates": {
+    "view_item": 0.213868,
+    "add_to_cart": 0.197001,
+    "begin_checkout": 0.392737,
+    "purchase": 0.431784
+   }
+  }
+ },
+ "attribution": {
+  "models": [
+   "last_click",
+   "last_non_direct",
+   "first_click",
+   "linear",
+   "time_decay",
+   "position_based"
+  ],
+  "ga4_sample": {
+   "scope": "complete-lookback orders",
+   "channel_grain": "source / medium",
+   "orders": 3208.0,
+   "revenue_usd": 215866.0,
+   "totals_by_model": {
+    "last_click": {
+     "orders": 3208.0,
+     "revenue_usd": 215866.0
+    },
+    "last_non_direct": {
+     "orders": 3208.0,
+     "revenue_usd": 215866.0
+    },
+    "first_click": {
+     "orders": 3208.0,
+     "revenue_usd": 215866.0
+    },
+    "linear": {
+     "orders": 3208.0,
+     "revenue_usd": 215866.0
+    },
+    "time_decay": {
+     "orders": 3208.0,
+     "revenue_usd": 215866.0
+    },
+    "position_based": {
+     "orders": 3208.0,
+     "revenue_usd": 215866.0
+    }
+   },
+   "channels": [
+    {
+     "channel": "google / organic",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 56821.0,
+      "last_non_direct": 58454.0,
+      "first_click": 86344.0,
+      "linear": 66308.73,
+      "time_decay": 65702.08,
+      "position_based": 69567.58
+     },
+     "share": {
+      "last_click": 0.263223,
+      "last_non_direct": 0.270788,
+      "first_click": 0.399989,
+      "linear": 0.307175,
+      "time_decay": 0.304365,
+      "position_based": 0.322272
+     }
+    },
+    {
+     "channel": "<Other> / referral",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 43845.0,
+      "last_non_direct": 45233.0,
+      "first_click": 52026.0,
+      "linear": 46501.55,
+      "time_decay": 47219.81,
+      "position_based": 47193.91
+     },
+     "share": {
+      "last_click": 0.203112,
+      "last_non_direct": 0.209542,
+      "first_click": 0.241011,
+      "linear": 0.215419,
+      "time_decay": 0.218746,
+      "position_based": 0.218626
+     }
+    },
+    {
+     "channel": "(not set) / (not set)",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 41265.0,
+      "last_non_direct": 43316.0,
+      "first_click": 12949.0,
+      "linear": 30054.84,
+      "time_decay": 32725.64,
+      "position_based": 28193.7
+     },
+     "share": {
+      "last_click": 0.19116,
+      "last_non_direct": 0.200662,
+      "first_click": 0.059986,
+      "linear": 0.139229,
+      "time_decay": 0.151602,
+      "position_based": 0.130607
+     }
+    },
+    {
+     "channel": "shop.googlemerchandisestore.com / referral",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 36677.0,
+      "last_non_direct": 39231.0,
+      "first_click": 8553.0,
+      "linear": 30310.39,
+      "time_decay": 29663.46,
+      "position_based": 25767.77
+     },
+     "share": {
+      "last_click": 0.169906,
+      "last_non_direct": 0.181738,
+      "first_click": 0.039622,
+      "linear": 0.140413,
+      "time_decay": 0.137416,
+      "position_based": 0.119369
+     }
+    },
+    {
+     "channel": "(direct) / (none)",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 14405.0,
+      "last_non_direct": 5289.0,
+      "first_click": 22270.0,
+      "linear": 15703.19,
+      "time_decay": 14933.9,
+      "position_based": 17271.99
+     },
+     "share": {
+      "last_click": 0.066731,
+      "last_non_direct": 0.024501,
+      "first_click": 0.103166,
+      "linear": 0.072745,
+      "time_decay": 0.069181,
+      "position_based": 0.080013
+     }
+    },
+    {
+     "channel": "<Other> / <Other>",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 5082.0,
+      "last_non_direct": 5536.0,
+      "first_click": 14141.0,
+      "linear": 8006.43,
+      "time_decay": 6878.49,
+      "position_based": 9051.72
+     },
+     "share": {
+      "last_click": 0.023542,
+      "last_non_direct": 0.025646,
+      "first_click": 0.065508,
+      "linear": 0.03709,
+      "time_decay": 0.031865,
+      "position_based": 0.041932
+     }
+    },
+    {
+     "channel": "(data deleted) / (data deleted)",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 6278.0,
+      "last_non_direct": 7176.0,
+      "first_click": 1028.0,
+      "linear": 5423.8,
+      "time_decay": 5608.54,
+      "position_based": 4415.92
+     },
+     "share": {
+      "last_click": 0.029083,
+      "last_non_direct": 0.033243,
+      "first_click": 0.004762,
+      "linear": 0.025126,
+      "time_decay": 0.025982,
+      "position_based": 0.020457
+     }
+    },
+    {
+     "channel": "google / cpc",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 2207.0,
+      "last_non_direct": 2207.0,
+      "first_click": 5102.0,
+      "linear": 3203.94,
+      "time_decay": 2914.32,
+      "position_based": 3488.88
+     },
+     "share": {
+      "last_click": 0.010224,
+      "last_non_direct": 0.010224,
+      "first_click": 0.023635,
+      "linear": 0.014842,
+      "time_decay": 0.013501,
+      "position_based": 0.016162
+     }
+    },
+    {
+     "channel": "other (23 channels)",
+     "other": true,
+     "channels": 23,
+     "revenue_usd": {
+      "last_click": 9286.0,
+      "last_non_direct": 9424.0,
+      "first_click": 13453.0,
+      "linear": 10353.14,
+      "time_decay": 10219.75,
+      "position_based": 10914.53
+     },
+     "share": {
+      "last_click": 0.043017,
+      "last_non_direct": 0.043657,
+      "first_click": 0.062321,
+      "linear": 0.047961,
+      "time_decay": 0.047343,
+      "position_based": 0.050562
+     }
+    }
+   ]
+  },
+  "tagline_site": {
+   "scope": "all attributed orders (none has a complete 30-day lookback)",
+   "channel_grain": "source / medium / campaign",
+   "orders": 8.0,
+   "revenue_usd": 461.95,
+   "totals_by_model": {
+    "last_click": {
+     "orders": 8.0,
+     "revenue_usd": 461.95
+    },
+    "last_non_direct": {
+     "orders": 8.0,
+     "revenue_usd": 461.95
+    },
+    "first_click": {
+     "orders": 8.0,
+     "revenue_usd": 461.95
+    },
+    "linear": {
+     "orders": 8.0,
+     "revenue_usd": 461.95
+    },
+    "time_decay": {
+     "orders": 8.0,
+     "revenue_usd": 461.95
+    },
+    "position_based": {
+     "orders": 8.0,
+     "revenue_usd": 461.95
+    }
+   },
+   "channels": [
+    {
+     "channel": "facebook / paid_social / retarget_q4",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 278.96,
+      "last_non_direct": 278.96,
+      "first_click": 219.0,
+      "linear": 248.98,
+      "time_decay": 248.98,
+      "position_based": 248.98
+     },
+     "share": {
+      "last_click": 0.603875,
+      "last_non_direct": 0.603875,
+      "first_click": 0.474077,
+      "linear": 0.538976,
+      "time_decay": 0.538977,
+      "position_based": 0.538976
+     }
+    },
+    {
+     "channel": "google / organic / (organic)",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 77.99,
+      "last_non_direct": 155.99,
+      "first_click": 155.99,
+      "linear": 116.99,
+      "time_decay": 116.99,
+      "position_based": 116.99
+     },
+     "share": {
+      "last_click": 0.168828,
+      "last_non_direct": 0.337677,
+      "first_click": 0.337677,
+      "linear": 0.253253,
+      "time_decay": 0.253252,
+      "position_based": 0.253253
+     }
+    },
+    {
+     "channel": "newsletter / email / newsletter_oct",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 24.0,
+      "last_non_direct": 24.0,
+      "first_click": 83.96,
+      "linear": 53.98,
+      "time_decay": 53.98,
+      "position_based": 53.98
+     },
+     "share": {
+      "last_click": 0.051954,
+      "last_non_direct": 0.051954,
+      "first_click": 0.181751,
+      "linear": 0.116852,
+      "time_decay": 0.116852,
+      "position_based": 0.116852
+     }
+    },
+    {
+     "channel": "(direct) / (none) / (direct)",
+     "other": false,
+     "channels": 1,
+     "revenue_usd": {
+      "last_click": 81.0,
+      "last_non_direct": 3.0,
+      "first_click": 3.0,
+      "linear": 42.0,
+      "time_decay": 42.0,
+      "position_based": 42.0
+     },
+     "share": {
+      "last_click": 0.175344,
+      "last_non_direct": 0.006494,
+      "first_click": 0.006494,
+      "linear": 0.090919,
+      "time_decay": 0.090919,
+      "position_based": 0.090919
+     }
+    }
+   ]
+  },
+  "lookback": {
+   "ga4_sample": {
+    "complete_orders": 3208.0,
+    "incomplete_orders": 1710.0,
+    "complete_revenue_usd": 215866.0,
+    "incomplete_revenue_usd": 124279.0
+   },
+   "tagline_site": {
+    "complete_orders": 0.0,
+    "incomplete_orders": 8.0,
+    "complete_revenue_usd": 0.0,
+    "incomplete_revenue_usd": 461.95
+   }
+  }
+ },
+ "tag_health": {
+  "contract_versions": [
+   "1.0.0"
+  ],
+  "by_source": {
+   "ga4_sample": {
+    "rows": 8416,
+    "pass": 4204,
+    "expected": 4212,
+    "violation": 0,
+    "violations": 0,
+    "first_date": "2020-11-01",
+    "last_date": "2021-01-31",
+    "days": 92,
+    "by_kind": [
+     {
+      "kind": "required",
+      "pass": 2624,
+      "expected": 3959,
+      "violation": 0
+     },
+     {
+      "kind": "pii",
+      "pass": 1465,
+      "expected": 0,
+      "violation": 0
+     },
+     {
+      "kind": "dedupe",
+      "pass": 115,
+      "expected": 69,
+      "violation": 0
+     },
+     {
+      "kind": "attribution",
+      "pass": 0,
+      "expected": 184,
+      "violation": 0
+     }
+    ]
+   },
+   "tagline_site": {
+    "rows": 239,
+    "pass": 239,
+    "expected": 0,
+    "violation": 0,
+    "violations": 0,
+    "first_date": "2026-09-27",
+    "last_date": "2026-09-27",
+    "days": 1,
+    "by_kind": [
+     {
+      "kind": "required",
+      "pass": 104,
+      "expected": 0,
+      "violation": 0
+     },
+     {
+      "kind": "format",
+      "pass": 104,
+      "expected": 0,
+      "violation": 0
+     },
+     {
+      "kind": "value_math",
+      "pass": 8,
+      "expected": 0,
+      "violation": 0
+     },
+     {
+      "kind": "pii",
+      "pass": 19,
+      "expected": 0,
+      "violation": 0
+     },
+     {
+      "kind": "dedupe",
+      "pass": 2,
+      "expected": 0,
+      "violation": 0
+     },
+     {
+      "kind": "attribution",
+      "pass": 2,
+      "expected": 0,
+      "violation": 0
+     }
+    ]
+   }
+  },
+  "expectations": [
+   {
+    "source": "ga4_sample",
+    "expectation": "GA4 sample: the Google Merchandise Store, tagged by Google, not to the Tagline contract, and obfuscated: currency and value only from add_shipping_info on, no items on add_shipping_info / add_payment_info, often none on view_item, item brand / quantity / list index often (not set), 450 purchases with no transaction_id",
+    "rows": 3959,
+    "kinds": [
+     "required"
+    ]
+   },
+   {
+    "source": "ga4_sample",
+    "expectation": "GA4 sample: obfuscated sources (<Other>, (data deleted)), and sessions with no source collected at all",
+    "rows": 184,
+    "kinds": [
+     "attribution"
+    ]
+   },
+   {
+    "source": "ga4_sample",
+    "expectation": "GA4 sample: 324 purchase events repeat an earlier one of the same order on the same device; fct_orders keeps the first",
+    "rows": 43,
+    "kinds": [
+     "dedupe"
+    ]
+   },
+   {
+    "source": "ga4_sample",
+    "expectation": "GA4 sample: 15 transaction ids were sent from two devices weeks apart; kept as separate orders",
+    "rows": 26,
+    "kinds": [
+     "dedupe"
+    ]
+   }
+  ]
+ },
+ "campaigns": {
+  "tagline_site": {
+   "first_date": "2026-09-27",
+   "last_date": "2026-09-27",
+   "rows": [
+    {
+     "channel": "(direct) / (none) / (direct)",
+     "sessions": 13,
+     "engaged_sessions": 12,
+     "orders": 2,
+     "revenue_usd": 81.0,
+     "cost_usd": null,
+     "roas": null,
+     "cost_per_order": null
+    },
+    {
+     "channel": "newsletter / email / newsletter_oct",
+     "sessions": 13,
+     "engaged_sessions": 13,
+     "orders": 1,
+     "revenue_usd": 24.0,
+     "cost_usd": 8.4,
+     "roas": 2.86,
+     "cost_per_order": 8.4
+    },
+    {
+     "channel": "google / organic / (organic)",
+     "sessions": 10,
+     "engaged_sessions": 10,
+     "orders": 2,
+     "revenue_usd": 77.99,
+     "cost_usd": null,
+     "roas": null,
+     "cost_per_order": null
+    },
+    {
+     "channel": "google / cpc / fall_launch",
+     "sessions": 7,
+     "engaged_sessions": 5,
+     "orders": 0,
+     "revenue_usd": 0.0,
+     "cost_usd": 35.41,
+     "roas": 0.0,
+     "cost_per_order": null
+    },
+    {
+     "channel": "facebook / paid_social / retarget_q4",
+     "sessions": 5,
+     "engaged_sessions": 5,
+     "orders": 3,
+     "revenue_usd": 278.96,
+     "cost_usd": 39.43,
+     "roas": 7.07,
+     "cost_per_order": 13.14
+    }
+   ],
+   "totals": {
+    "sessions": 48,
+    "orders": 8,
+    "revenue_usd": 461.95,
+    "cost_usd": 83.24,
+    "paid_revenue_usd": 302.96,
+    "paid_roas": 3.64
+   }
+  }
+ },
+ "cited": {
+  "pipeline_runs": {
+   "note": "One Airflow run of the daily DAG (airflow dags test) each, measured by the stage that made it. List price before free tiers: BigQuery on demand $6.25 per TiB billed, Dataproc Serverless $0.06 per DCU-hour.",
+   "runs": [
+    {
+     "stage": "Stage 3",
+     "label": "Stage 3: full rebuild + Spark batch",
+     "wall_s": 480,
+     "bigquery_gib": 8.7,
+     "dcu_hours": 0.436,
+     "usd": 0.081,
+     "source": {
+      "doc": "STAGE4-RESULTS.md#the-final-state",
+      "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/STAGE4-RESULTS.md#the-final-state",
+      "label": "STAGE4-RESULTS.md, The final state"
+     }
+    },
+    {
+     "stage": "Stage 4",
+     "label": "Stage 4: daily incremental build + tuned batch",
+     "wall_s": 249,
+     "bigquery_gib": 2.21,
+     "dcu_hours": 0.083,
+     "usd": 0.0189,
+     "source": {
+      "doc": "STAGE4-RESULTS.md#the-final-state",
+      "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/STAGE4-RESULTS.md#the-final-state",
+      "label": "STAGE4-RESULTS.md, The final state"
+     }
+    },
+    {
+     "stage": "Stage 5",
+     "label": "Stage 5: + monitoring marts, 11 checks, alert tasks",
+     "wall_s": 383,
+     "bigquery_gib": 2.51,
+     "dcu_hours": 0.114,
+     "usd": 0.022,
+     "source": {
+      "doc": "README.md#what-stage-5-costs",
+      "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/README.md#what-stage-5-costs",
+      "label": "README.md, What Stage 5 costs"
+     }
+    }
+   ],
+   "monthly": {
+    "before_usd": 2.44,
+    "after_usd": 0.55,
+    "paid_before_usd": 0.86,
+    "paid_after_usd": 0.16,
+    "text": "A daily run for a month at list price, before and after Stage 4. BigQuery stays inside its free monthly tier either way, so what the project pays is the Spark part.",
+    "source": {
+     "doc": "STAGE4-RESULTS.md#what-it-costs-a-month",
+     "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/STAGE4-RESULTS.md#what-it-costs-a-month",
+     "label": "STAGE4-RESULTS.md, What it costs a month"
+    }
+   },
+   "builds": [
+    {
+     "label": "Full build + checks",
+     "stage4_gib": 8.05,
+     "stage5_gib": 9.19
+    },
+    {
+     "label": "Daily incremental build + checks",
+     "stage4_gib": 2.15,
+     "stage5_gib": 2.43
+    }
+   ],
+   "builds_source": {
+    "doc": "README.md#what-stage-5-costs",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/README.md#what-stage-5-costs",
+    "label": "README.md, What Stage 5 costs"
+   }
+  },
+  "backtest": {
+   "text": "Every alert was checked against the marts and judged: 12 incidents (the same series or event on consecutive days), 11 of them six real problems in the sample's own data, 1 noise. Christmas stayed inside the band.",
+   "incidents": 12,
+   "problems": 6,
+   "noise_incidents": 1,
+   "judged": [
+    {
+     "start": "2020-11-01",
+     "end": "2020-11-15",
+     "kind": "signal",
+     "problem": 1,
+     "label": "add_to_cart not collected (the floor rule)"
+    },
+    {
+     "start": "2020-11-18",
+     "end": "2020-11-22",
+     "kind": "signal",
+     "problem": 2,
+     "label": "Purchases sent twice per order from the same device"
+    },
+    {
+     "start": "2020-11-20",
+     "end": "2020-11-24",
+     "kind": "signal",
+     "problem": 3,
+     "label": "add_to_cart missing again"
+    },
+    {
+     "start": "2020-11-24",
+     "end": "2020-11-25",
+     "kind": "signal",
+     "problem": 4,
+     "label": "Checkout items lose their category"
+    },
+    {
+     "start": "2020-12-13",
+     "end": "2020-12-13",
+     "kind": "noise",
+     "problem": null,
+     "label": "The category quirk at a new high on a quiet Sunday"
+    },
+    {
+     "start": "2020-12-30",
+     "end": "2020-12-30",
+     "kind": "signal",
+     "problem": 5,
+     "label": "One-day glitch: purchases without a transaction id"
+    },
+    {
+     "start": "2021-01-26",
+     "end": "2021-01-31",
+     "kind": "signal",
+     "problem": 6,
+     "label": "The purchase tag breaks: no transaction id, checkout-to-purchase falls to 0"
+    }
+   ],
+   "source": {
+    "doc": "docs/monitoring.md#the-backtest-the-samples-92-days",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/docs/monitoring.md#the-backtest-the-samples-92-days",
+    "label": "docs/monitoring.md, The backtest"
+   }
+  },
+  "tag_qa": {
+   "tests": 46,
+   "journeys": 9,
+   "rules": 10,
+   "mutations": 12,
+   "mutations_caught": 12,
+   "text": "Scripted journeys in Chrome, checked against the contract and the rules, golden dataLayer snapshots and a GA4 hit layer, on every push in CI. The breaks were made to the site's tag code one at a time.",
+   "source": {
+    "doc": "docs/tag-qa.md",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/docs/tag-qa.md",
+    "label": "docs/tag-qa.md"
+   }
+  },
+  "alert_history": {
+   "min_judged_days": 14,
+   "text": "On the site today only contract_violation and no_data can fire: the floor needs a day of 100 sessions (the site's day had 48), vanished needs 3 days of history, and the band 14 judged days, a day being judged only when it has enough volume.",
+   "source": {
+    "doc": "docs/monitoring.md#anomaly-alerts",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/docs/monitoring.md#anomaly-alerts",
+    "label": "docs/monitoring.md, Anomaly alerts"
+   }
+  },
+  "consent_denied_orders": {
+   "text": "A purchase sent with consent denied has no device or session id, so it is an order in no session: it counts in orders and revenue, but has no campaign and no journey to attribute.",
+   "source": {
+    "doc": "README.md#results-on-the-sites-export",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/README.md#results-on-the-sites-export",
+    "label": "README.md, Results on the site's export"
+   }
+  },
+  "synthetic": {
+   "text": "Campaign spend (campaign_costs) and product unit costs are seeded and flagged in their tables; every row of the site's export comes from the simulator.",
+   "source": {
+    "doc": "README.md#what-is-synthetic",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/README.md#what-is-synthetic",
+    "label": "README.md, What is synthetic"
+   }
+  },
+  "self_referral": {
+   "channel": "shop.googlemerchandisestore.com / referral",
+   "text": "A self-referral: the store's own domain referring to itself. It is mostly the last step of a journey that started elsewhere, so every multi-touch model moves part of its credit back to where the buyer came from.",
+   "source": {
+    "doc": "README.md#results-on-the-sample",
+    "url": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/README.md#results-on-the-sample",
+    "label": "README.md, Results on the sample"
+   }
+  }
+ }
+}

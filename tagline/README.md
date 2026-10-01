@@ -2,27 +2,39 @@
 
 [![tagline-site](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/tagline-site.yml/badge.svg)](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/tagline-site.yml)
 [![tagline-tagqa](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/tagline-tagqa.yml/badge.svg)](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/tagline-tagqa.yml)
+[![tagline-pipeline](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/tagline-pipeline.yml/badge.svg)](https://github.com/jdoan5/Databases-and-Data-Platforms/actions/workflows/tagline-pipeline.yml)
 
-Site tags to trusted KPIs on Google Cloud. A small React storefront is tagged
-with GA4's recommended ecommerce events against a written, machine-checked
-contract; later stages take those events through BigQuery, PySpark on Dataproc
-and Airflow to KPIs, then measure what that costs and alert when the tags or the
-numbers go wrong.
+Site tags to trusted KPIs on Google Cloud, in six stages. A small React storefront is tagged
+with GA4's recommended ecommerce events against a written, machine-checked contract. Its GA4
+export and Google's public GA4 sample go through BigQuery, PySpark on Dataproc and Airflow to KPIs
+and multi-touch attribution. What a run costs is measured and cut, tag QA and anomaly alerts watch
+the tags and the numbers, and a roadmap and a dashboard make it something a team could run.
 
-This folder holds Stage 1 (the tagged site, the tagging plan, and the contract),
-Stage 2 (a BigQuery pipeline that stitches and enriches GA4 export data, and a traffic
-simulator for the site), Stage 3 (multi-touch attribution in PySpark on Dataproc
-Serverless, and the whole pipeline as one Airflow DAG), Stage 4 (the same pipeline made
-cheaper and faster, one measured change at a time) and Stage 5 (tag QA before a release, checks on
-the collected data, and alerts when a KPI or a tag goes wrong). Stage 2 is
-[below](#stage-2-stitch-and-enrich-in-bigquery), then [Stage 3](#stage-3-attribution-in-spark-orchestrated-by-airflow),
-[Stage 4](#stage-4-cheaper-and-faster-measured) and [Stage 5](#stage-5-guard-the-data).
+**Dashboard:** [jdoan5.github.io/tagline](https://jdoan5.github.io/tagline/), a static page over a
+snapshot of the marts ([dashboard/README.md](dashboard/README.md)). **Roadmap:** [ROADMAP.md](ROADMAP.md).
 
-![Order confirmation page with the Tag Inspector open on the purchase event](docs/images/confirmation-purchase.png)
+Two sources, labelled wherever their numbers appear: Google's GA4 sample is real store traffic,
+obfuscated by Google, so its revenue shows the pipeline working, not how Google's store did; the
+site's own export is one day of simulated shoppers.
 
-*The confirmation page after a two-item order, with the Tag Inspector (`?debug=1`) open on the
-`purchase` push. `value` is the subtotal, 2 × 13.99 + 58.00 = 85.98; tax and shipping go in their
-own fields. More screenshots [below](#screenshots).*
+| Stage | Headline numbers |
+|---|---|
+| 1. [Tag the site](#what-gets-tagged) | 14 events, each validated against a JSON Schema contract as it fires and shown in a Tag Inspector; `user_id` is an opaque account id, never the email; 67 unit tests and a Playwright funnel test |
+| 2. [Stitch and enrich in BigQuery](#stage-2-stitch-and-enrich-in-bigquery) | the sample's 4,295,584 events into 360,129 sessions and 4,918 orders that count as conversions, $340,145.00 (5,368 with the 450 zero-value purchases that have no `transaction_id`; without the purchase dedupe, revenue reads 6.5% high); on the site's export, 8 people stitched across 17 devices |
+| 3. [Attribution in Spark, run by Airflow](#stage-3-attribution-in-spark-orchestrated-by-airflow) | every order credited under six models, reconciling to Stage 2 to the cent; the store's self-referral has 17.0% of last-click revenue and 4.0% of first-click (orders with a complete 30-day lookback) |
+| 4. [Cheaper and faster, measured](#stage-4-cheaper-and-faster-measured) | a daily DAG run from 480 s and $0.081 to 249 s and $0.019, BigQuery billed −75%, outputs identical but for two documented last-bit sums |
+| 5. [Guard the data](#stage-5-guard-the-data) | a 46-test tag QA suite, in CI, fails on 12 of 12 deliberate tag breaks; the anomaly rules, backtested on 92 days, raised 114 alerts in 12 incidents, all but one from six real problems in the sample |
+| 6. [Run it like a product](#stage-6-run-it-like-a-product) | a roadmap of 26 RICE-scored items, each traced to a finding of Stages 1–5; three issue forms for requests; a decision log; the dashboard, from a 71 KB snapshot that cost 6 queries and 60 MiB |
+
+Docs: [tagging plan](docs/tagging-plan.md) · [data model](docs/data-model.md) ·
+[orchestration](docs/orchestration.md) · [attribution rules](spark/README.md) ·
+[Stage 4 results](STAGE4-RESULTS.md) · [tag QA](docs/tag-qa.md) · [monitoring](docs/monitoring.md) ·
+[roadmap](ROADMAP.md) · [dashboard](dashboard/README.md)
+
+![The dashboard's daily chart of the GA4 sample, sessions and revenue, with the anomaly alert days marked underneath](docs/images/dashboard-daily.png)
+
+*The dashboard's daily chart: the GA4 sample's sessions and revenue per day, on one time axis, and
+under them the days the Stage 5 anomaly rules raised an alert. More screenshots [below](#screenshots).*
 
 ---
 
@@ -30,12 +42,12 @@ own fields. More screenshots [below](#screenshots).*
 
 | # | Stage | What it produces | Status |
 |---|---|---|---|
-| 1 | Tag the site | React storefront, [tagging plan](docs/tagging-plan.md), [JSON Schema contract](tagging/events.schema.json), runtime validation with a Tag Inspector, unit and end-to-end tests | Done, pending review |
-| 2 | Stitch and enrich in BigQuery | Site events unioned with the GA4 Merchandise Store sample dataset; anonymous sessions stitched to signed-in users on `user_id`; orders deduplicated, enriched with catalog cost; campaign and funnel marts; a seeded traffic simulator | Built and checked on the sample and on the site's own GA4 export (one day of simulated traffic, 1,433 events; [below](#the-sites-own-export)) |
-| 3 | PySpark on Dataproc + Airflow | Multi-touch attribution: every order credited across the buyer's 30-day journey under six models, in PySpark on Dataproc Serverless; the Stage 2 SQL build, its checks, the Spark job and checks on its output as one daily Airflow DAG, run locally in Docker | Built and run end to end on the sample and the site's export, on the pinned Dataproc runtime 3.0, with cross-device journeys from the site ([below](#stage-3-attribution-in-spark-orchestrated-by-airflow)) |
+| 1 | Tag the site | React storefront, [tagging plan](docs/tagging-plan.md), [JSON Schema contract](tagging/events.schema.json), runtime validation with a Tag Inspector, unit and end-to-end tests | Done: 14 events, 67 unit tests, the funnel test in CI since Stage 5. One decision in the plan, `user_id` under denied consent (§8), still needs a sign-off ([ROADMAP](ROADMAP.md#now), item 1) |
+| 2 | Stitch and enrich in BigQuery | Site events unioned with the GA4 Merchandise Store sample dataset; anonymous sessions stitched to signed-in users on `user_id`; orders deduplicated, enriched with catalog cost; campaign and funnel marts; a seeded traffic simulator | Done: built and checked on the sample and on the site's own GA4 export (one day of simulated traffic, 1,433 events; [below](#the-sites-own-export)) |
+| 3 | PySpark on Dataproc + Airflow | Multi-touch attribution: every order credited across the buyer's 30-day journey under six models, in PySpark on Dataproc Serverless; the Stage 2 SQL build, its checks, the Spark job and checks on its output as one daily Airflow DAG, run locally in Docker | Done: built and run end to end on the sample and the site's export, on the pinned Dataproc runtime 3.0, with cross-device journeys from the site ([below](#stage-3-attribution-in-spark-orchestrated-by-airflow)) |
 | 4 | Cost and run-time optimization, measured | Nine experiments, each kept or reverted on its numbers: a daily incremental BigQuery build (one script, one transaction, identical to a full build on every step of its equivalence test), narrower reads, a measured table layout, a storage recommendation; the Spark batch out of one-thread local mode, down to 4 partitions and the smallest driver; the harness and every run's record in [`bench/results/`](bench/results/) | Done: a daily DAG run 249 s and $0.019 against 480 s and $0.081, outputs identical but for two documented last-bit sums ([below](#stage-4-cheaper-and-faster-measured), [STAGE4-RESULTS.md](STAGE4-RESULTS.md)) |
 | 5 | Tag QA and KPI alerting | Tag QA: a 9-journey test plan, 10 rules, golden dataLayer snapshots and a GA4 hit layer against a fake measurement id, in CI ([tag-qa.md](docs/tag-qa.md)); a daily tag-health mart with its checks generated from the contract, a daily KPI mart, and anomaly alerts on both (missing days and vanished events included), backtested on the sample's 92 days, delivered to a webhook or the log from the DAG ([monitoring.md](docs/monitoring.md)) | Done: 12 of 12 mutations of the site's tags fail the suite; the backtest flags six real problems in the sample with one noise incident; the DAG green end to end with the new tasks ([below](#stage-5-guard-the-data)) |
-| 6 | Roadmap | What would change for a real store | Not started |
+| 6 | Run it like a product | [ROADMAP.md](ROADMAP.md): who the data serves and the decisions it supports, intake through three GitHub issue forms, RICE with its scale defined, a scored backlog in Now / Next / Later, what would change for a real store, a decision log; a static dashboard over a JSON snapshot of the marts, published on the portfolio site ([dashboard/README.md](dashboard/README.md)) | Done: 26 backlog items, each citing the doc and section behind it; the snapshot validated against a JSON Schema and a privacy scan; the page checked in Chrome at 1280 and 375 px ([below](#stage-6-run-it-like-a-product)) |
 
 ---
 
@@ -90,6 +102,7 @@ Playwright's Chromium ([`tagline-tagqa.yml`](../.github/workflows/tagline-tagqa.
 tagline/
   README.md
   STAGE4-RESULTS.md              Stage 4: every experiment, its numbers, kept or reverted, and the final runs
+  ROADMAP.md                     Stage 6: who the data serves, intake, RICE, the scored backlog, a real store, the decision log
   Makefile                       make help lists every target
   .env.example                   copy to .env (gitignored): the Google Cloud project id, the site's GA4 dataset, the cost guard;
                                  for Stage 3 the Dataproc region, bucket and service account; for Stage 5 the alert webhook
@@ -124,6 +137,8 @@ tagline/
   airflow/                       Stage 3: docker-compose for Airflow 3, the tagline_daily DAG, its DagBag test
     dags/tagline_daily.py        the DAG; helpers in dags/tagline_airflow/, the attribution checks in its sql/
   bench/                         Stage 4: the measurement harness (make bench-*), its tests, and the results log in results/
+  dashboard/                     Stage 6: the snapshot exporter, data/snapshot.json, the static page, its schema and tests
+../.github/ISSUE_TEMPLATE/       Stage 6: the three request forms (tagline-data-request, tagline-tag-change, tagline-data-bug)
 ```
 
 The store is "Tagline Supply": 20 products in five categories (Apparel,
@@ -265,7 +280,7 @@ through GA4's own BigQuery export ([Stage 2](#the-sites-own-export)).
   running ads should offer.
 - **The end-to-end test was local-only in Stage 1.** Stage 5 put it in CI
   with the tag QA suite ([`tagline-tagqa.yml`](../.github/workflows/tagline-tagqa.yml)),
-  which has not yet run on GitHub's runners.
+  which has since passed on GitHub's runners (46 of 46 on 2026-09-30).
 
 ---
 
@@ -942,7 +957,7 @@ layer to that description.
 | KPI anomaly alerts (the "Alert Goose" kind) | each KPI and tag-health rate against its own last 21 days | a pure-Python module, thresholds in one file, two Airflow tasks, a webhook | [docs/monitoring.md](docs/monitoring.md#anomaly-alerts) |
 
 Stage 5 changed no site code, tag or contract file: `site/src/` and `tagging/` are as Stage 4 left them. The
-signed-off [tagging plan](docs/tagging-plan.md) is unchanged too; its §10 and §12 said Stage 5 would grow the
+[tagging plan](docs/tagging-plan.md) (not yet signed off; [ROADMAP](ROADMAP.md#now) item 1) is unchanged too; its §10 and §12 said Stage 5 would grow the
 end-to-end test into full tag QA against the same schema and watch the funnel and purchase KPIs, which is what the
 two write-ups describe. The pipeline gained two models, two checks, and five event parameters flattened into
 `stg_events` for the tag health checks.
@@ -1017,7 +1032,8 @@ only. It uploads the HTML report, and on failure the golden diffs and traces. `t
 covers `tagqa/`. A third new workflow, [`tagline-pipeline.yml`](../.github/workflows/tagline-pipeline.yml), runs the
 pipeline's pytest on Python 3.12 when the pipeline, the contract, the catalog or the simulator's plan changes; the
 125 tests of that time passed on Python 3.12.14 in a container here, as well as on 3.14 in the venv. The review round's
-134 (plus the opt-in BigQuery test, skipped there) ran on 3.14 only.
+134 (plus the opt-in BigQuery test, skipped there) ran on 3.14 only here; on GitHub's runner, after the Stage 5 push,
+they passed on 3.12.14 (134 passed, 1 skipped).
 
 ### Collected-data QA
 
@@ -1154,10 +1170,12 @@ used no batch. The tag QA suite uses no cloud resource; its only external reques
   a change on Google's side can fail it with no change to the site.
 - **What GA4 does after the hit is not tested**, since nothing is sent to Google. For example, after a sign-out
   gtag.js sends an empty `uid=`, and whether GA4 stores that as a NULL `user_id` is not verified.
-- **The two new CI workflows have not run on GitHub yet.** `actionlint` passes on all four Tagline workflows. With
-  `CI` set the suite runs on Playwright's Chromium, which is not installed here, so that browser path is unverified;
-  the CI settings were run on Chrome instead (46 of 46). An earlier version of these docs claimed a local `CI=1` run
-  that the committed config cannot have made.
+- **The two new CI workflows had not run on GitHub when this was written** (resolved). `actionlint` passes on all
+  four Tagline workflows. With `CI` set the suite runs on Playwright's Chromium, which is not installed here, so the
+  CI settings were first run on Chrome instead (46 of 46). The push of 2026-09-30 (16:30 UTC) then ran all three
+  workflows green: `tagline-tagqa` 46 of 46 on Playwright's Chromium 153 (2 workers, 1.2 min), `tagline-pipeline`
+  134 passed and 1 skipped on Python 3.12.14, `tagline-site` 67. An earlier version of these docs claimed a local
+  `CI=1` run that the committed config cannot have made.
 - **Failures after the alert step reach no channel.** The message names the tasks that failed before
   `notify_alerts` (the build, a check); a Spark batch that fails later only makes the run red. An
   `on_failure_callback` would post it. Delivery is at least once: a crash after the POST and before the table is
@@ -1168,9 +1186,94 @@ used no batch. The tag QA suite uses no cloud resource; its only external reques
 
 ---
 
+## Stage 6: run it like a product
+
+Stages 1 to 5 built a pipeline. Stage 6 adds what a team needs to run one: a written way to decide what gets built
+next, a way for requests to come in, and a page where people can read the numbers. It changed no site code, tag,
+contract, SQL model, check or DAG.
+
+**The roadmap, [ROADMAP.md](ROADMAP.md).**
+
+- **Who the data serves.** Analysts, marketing, product and engineering, and seven decisions (D1 to D7) the tables
+  were built to answer, each with what limits the answer today. Legal approves what may be collected and kept; it
+  is not a user of the data.
+- **Intake.** Requests arrive through three GitHub issue forms. Each must state the decision it informs, the
+  metric's definition, the deadline and who is affected. Triage is weekly; critical data bugs are handled the same
+  day, following the alert rules, where personal data is always critical.
+- **RICE, with the scale written down.** There are no real users, so Reach counts the decisions an item changes,
+  not people, and every row lists them so the count can be checked. Effort is person-days. Waiting on Legal, on 14
+  days of data or on a backend team is a gate, not effort. A hard date overrides the score.
+- **A scored backlog of 26 items**, each citing the doc and section that motivates it. Now: 7 items, 6.5
+  person-days, such as the §8 sign-off, flagging synthetic site rows in the tables, and a real alert channel. Next:
+  8 items, such as real traffic and moving the Spark job off runtime 3.0 before its end of support on 2027-01-31.
+  Later: 11 items, each with the trigger that brings it forward, such as an always-on scheduler (Cloud Composer),
+  the storage billing switch, and server-side tagging.
+- **What would change for a real store**, and a **decision log** of 12 decisions, each with the alternative it was
+  chosen over and why.
+
+**The intake forms**, in [`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE/): `tagline-data-request.yml`,
+`tagline-tag-change.yml` (the event, its parameters, why, the tagging-plan sections and golden journeys it touches,
+and whether it breaks readers of the data) and `tagline-data-bug.yml` (Critical, High or Low by impact; personal
+data is always critical, as in the alert rules). The repository is public, so each form ends with a required box: nothing in the issue identifies a person or
+gives access to a system. In a one-off check on 2026-09-30, a script kept outside the repository tested them against
+GitHub's documented issue-form rules and caught each of 25 deliberately broken copies; `actionlint` does not cover
+issue forms.
+
+**The dashboard**, [jdoan5.github.io/tagline](https://jdoan5.github.io/tagline/) ([dashboard/README.md](dashboard/README.md)).
+One command reads six small tables in `tagline_marts` and writes `dashboard/data/snapshot.json`, which is committed.
+The static page reads that file and nothing else: the two sources, labelled; KPI tiles; the sample's daily sessions
+and revenue with the alert days marked; funnel step rates; revenue share by channel under the six models, with the
+self-referral finding; tag health; the site's campaigns with synthetic spend and ROAS; and what a daily run costs,
+cited from the write-ups. It is a snapshot, not a live connection, and no viewer's browser talks to BigQuery.
+
+```bash
+cd tagline
+make dashboard-snapshot-dry   # the exporter's six queries as dry runs: free, writes nothing
+make dashboard-snapshot       # LIVE: 6 small queries (~60 MiB billed), then write and validate dashboard/data/snapshot.json
+make dashboard-setup          # npm ci in dashboard/: Playwright and Ajv, for the tests only
+make dashboard-test           # the exporter's pytest (12), the snapshot's schema, privacy and consistency checks, Playwright (8)
+make dashboard-serve          # http://127.0.0.1:5190/ until Ctrl-C
+make dashboard-publish        # validate, then copy the page and the snapshot to ../jdoan5.github.io/tagline/ (no commit)
+```
+
+**Checks.** The snapshot is 71,584 bytes of aggregates. A validator fails it on a schema error, an id-like key, an
+email, a GA4 measurement id, a dataset or project name, or any value from `tagline/.env`, and when its numbers
+disagree with each other (daily sums against the KPI totals, each model's shares summing to 1). In a one-off check,
+not kept as a test, six tampered copies each failed it. The page's figures match the ones in this README, and every figure BigQuery cannot know (run times,
+Dataproc usage, the backtest's judgement) links to the section it comes from; a test fails if one of those sections
+no longer contains its figure. Playwright checks the page in the installed Chrome at 1280 and 375 px, against this
+folder and against the published copy, and fails on any console error, failed request, request that leaves the
+local server, or horizontal scroll.
+
+**Cost.** The exporter's runs on 2026-09-30 billed 230 MiB of BigQuery in all, about $0.0014 at list price (60 MiB
+for the final run: BigQuery's 10 MiB minimum for each of 6 jobs, each capped at 200 MB). No Dataproc, and no new
+cloud resource.
+
+### Stage 6 limitations
+
+- **The snapshot is refreshed by hand.** `make dashboard-snapshot && make dashboard-publish`, then a push of the
+  portfolio repository. Nothing schedules it, and the stamp at the top of the page says when it was read. A
+  scheduled refresh would be one more DAG task plus a push this project does not make on the owner's behalf.
+- **The dashboard's tests are not in CI.** They run locally; no workflow runs them yet.
+- **Only one of the forms' labels exists.** GitHub skips a form's labels that do not exist in the repository, so
+  until the owner creates `tagline`, `data-request` and `tag-change`, only `bug` is applied.
+- **The roadmap's scores are one maintainer's estimates**, set on 2026-09-30. Reach counts decisions because there
+  are no users to count, and the triage cadence and item 9's target date are proposals, not commitments anyone has
+  made.
+- **The site's numbers are one simulated day.** The dashboard labels them as such, and no alert can fire on them
+  yet.
+
+---
+
 ## Screenshots
 
-Taken with headless Chrome against the dev server, `?debug=1`, 1280 px wide
+![Order confirmation page with the Tag Inspector open on the purchase event](docs/images/confirmation-purchase.png)
+
+*The confirmation page after a two-item order, with the Tag Inspector (`?debug=1`) open on the
+`purchase` push. `value` is the subtotal, 2 × 13.99 + 58.00 = 85.98; tax and shipping go in their
+own fields.*
+
+The site's screenshots were taken with headless Chrome against the dev server, `?debug=1`, 1280 px wide
 unless noted.
 
 | | |

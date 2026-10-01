@@ -1,0 +1,117 @@
+name: "Tagline: data bug"
+description: "Report a number, table, alert or tag in Tagline that looks wrong."
+title: "Tagline data bug: "
+labels: ["tagline", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For [Tagline](https://github.com/jdoan5/Databases-and-Data-Platforms/tree/main/tagline) only. Critical bugs are looked at the same day. Everything else waits for the weekly triage ([roadmap](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/ROADMAP.md#triage-cadence)).
+
+        **If personal data has reached the data** (an email in a table, say), do not paste it here. Name the table, the column and the date, and mark the bug critical.
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong
+      description: "One or two sentences."
+      placeholder: "fct_orders has one order fewer on 2026-09-27 than the simulator placed."
+    validations:
+      required: true
+  - type: textarea
+    id: expected_observed
+    attributes:
+      label: Expected and observed
+      description: "Both values, and where each comes from: a table and query, a dashboard tile, the GA4 UI, the simulator's record."
+      placeholder: |
+        Expected: 13 orders on 2026-09-27 (the simulator's plan)
+        Observed: 12 in fct_orders
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where you saw it
+      multiple: true
+      options:
+        - "stg_events or stg_items"
+        - "int_identity or fct_sessions"
+        - "fct_orders or fct_order_items"
+        - "mart_campaign_daily"
+        - "mart_funnel_daily"
+        - "mart_kpi_daily"
+        - "mart_tag_health_daily"
+        - "kpi_alerts, or an alert message"
+        - "fct_attribution or mart_attribution_daily"
+        - "The dashboard"
+        - "The site's dataLayer or its GA4 hits"
+        - "A CI run (tag QA, pipeline or site workflow)"
+        - "Not sure"
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Data source
+      options:
+        - "GA4 sample (ga4_sample)"
+        - "The site's own export (tagline_site)"
+        - "Both"
+        - "Not sure"
+    validations:
+      required: true
+  - type: input
+    id: dates
+    attributes:
+      label: Dates affected
+      description: "Event dates, a day or a range, and since when if it is still happening."
+      placeholder: "2020-11-18 to 2020-11-24"
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: "Critical: personal data in the data, a wrong number someone is already using (orders, revenue, a KPI in a report), or a data check failing. High: a wrong number nobody has used yet, or an alert that should have fired and did not. Low: a label, a doc, something cosmetic."
+      options:
+        - "Critical"
+        - "High"
+        - "Low"
+    validations:
+      required: true
+  - type: dropdown
+    id: found_by
+    attributes:
+      label: How it was found
+      options:
+        - "An alert (kpi_alerts, or the alert message)"
+        - "A data check failed (make build exited 1, or the DAG run was red)"
+        - "Tag QA, locally or in CI"
+        - "The dashboard"
+        - "A query of my own"
+        - "Comparing with the GA4 UI"
+        - "Something else"
+    validations:
+      required: false
+  - type: textarea
+    id: query
+    attributes:
+      label: Query or steps to reproduce
+      description: "A query that shows it, or the steps. A query on an `events_*` table needs its `_TABLE_SUFFIX` filter. Write `<project>` in place of the project id."
+      render: sql
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: Who is affected
+      description: "Decisions already made on the number, or reports that used it."
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before you submit
+      description: "This repository is public. Leave out emails, names, account or user ids, webhook URLs, keys and cloud project ids."
+      options:
+        - label: "Nothing in this issue identifies a person or gives access to a system."
+          required: true

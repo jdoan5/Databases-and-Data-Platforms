@@ -1,0 +1,20 @@
+{
+  "name": "tagline-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tagline Stage 6: the static dashboard's tests (snapshot schema, Playwright in the installed Chrome) and its screenshot script. The page itself needs no build and no dependency.",
+  "type": "module",
+  "scripts": {
+    "validate": "node tests/validate-snapshot.mjs",
+    "e2e": "playwright test",
+    "test": "npm run validate && npm run e2e",
+    "screenshot": "node screenshot.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "ajv": "^8.20.0"
+  },
+  "engines": {
+    "node": "^22.22.0 || ^24.0.0 || >=26.0.0"
+  }
+}

@@ -5,11 +5,12 @@
 SQL and database engineering on one inventory domain: a schema with real
 constraints and triggers, that same schema scaled to five million rows and tuned
 with measurements rather than guesses, and a small API + dashboard reading from
-it. Plus one project on Google Cloud, in progress: from the tags on a website to
-monitored KPIs.
+it. Plus one project on Google Cloud: from the tags on a website to monitored
+KPIs, with a published dashboard.
 
-Everything here is synthetic data generated from a fixed seed. No customer or
-production data.
+Everything here is synthetic data generated from a fixed seed, apart from
+Google's public, obfuscated GA4 sample dataset, which Tagline also reads. No
+private customer or production data.
 
 ---
 
@@ -48,23 +49,39 @@ make up && make reset && make check && make bench
 Needs Docker and nothing else — there is no `psql` on the host path and none is
 required; every SQL call goes through the container.
 
-### [`tagline/`](tagline/) — site tags to trusted KPIs on Google Cloud (in progress)
+### [`tagline/`](tagline/) — site tags to trusted KPIs on Google Cloud
 
-Stage 1 of 6: a small React storefront tagged with GA4's recommended ecommerce
-events, a [tagging plan](tagline/docs/tagging-plan.md) checked against Google's
-docs, and a [JSON Schema contract](tagline/tagging/events.schema.json) that every
-tag is validated against as it fires, visible in a Tag Inspector at `?debug=1`.
-A Playwright test walks the whole funnel and fails if an event is missing,
-malformed, out of order, or (for `purchase`) sent twice. Next: stitch and enrich
-the data in BigQuery, PySpark on Dataproc run by Airflow, cost and run-time
-tuning measured like the Postgres work above, then tag QA and KPI alerts.
+A small React storefront tagged with GA4's recommended ecommerce events against a
+written [tagging plan](tagline/docs/tagging-plan.md) and a
+[JSON Schema contract](tagline/tagging/events.schema.json), and the pipeline
+behind it, in six stages:
+
+1. Every tag validated against the contract as it fires, visible in a Tag
+   Inspector at `?debug=1`.
+2. The site's own GA4 export and Google's public GA4 sample stitched and
+   deduplicated in BigQuery. Without the purchase dedupe, the sample's revenue
+   reads 6.5% high.
+3. Every order credited under six attribution models in PySpark on Dataproc
+   Serverless, reconciling to the cent, with the whole pipeline as one Airflow DAG.
+4. A daily run cut from 480 s and $0.081 to 249 s and $0.019, one measured change
+   at a time, the way the Postgres work above was tuned.
+5. A 46-test tag QA suite in CI that fails on 12 of 12 deliberate tag breaks,
+   tag-health checks generated from the contract, and KPI anomaly alerts
+   backtested on 92 days of the sample.
+6. A RICE-scored [roadmap](tagline/ROADMAP.md) with issue forms for requests, and
+   a [dashboard page](https://jdoan5.github.io/tagline/) over a snapshot of the marts.
+
+The site's traffic is simulated, and labelled as such wherever its numbers appear.
+The headline numbers of each stage, and every write-up, are at the top of
+[tagline/README.md](tagline/README.md).
 
 ```bash
 cd tagline/site
-npm install && npm run dev    # http://localhost:5173/?debug=1
+npm ci && npm run dev    # http://localhost:5173/?debug=1
 ```
 
-Node 22.22+ or 24.
+Node 22.22+ or 24. The BigQuery, Spark and Airflow stages need a Google Cloud
+project; the Tagline README has the commands.
 
 ### [`Centralized Inventory Management System/`](Centralized%20Inventory%20Management%20System/) — the schema everything else uses
 

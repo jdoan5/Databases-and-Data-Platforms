@@ -13,3 +13,9 @@ pipeline/runs/
 
 # Raw output of commands the Stage 4 harness ran (names the project); the results log is bench/results/
 bench/logs/
+
+# Stage 6 dashboard: its test dependencies and outputs (the page and data/snapshot.json are committed)
+dashboard/node_modules/
+dashboard/test-results/
+dashboard/playwright-report/
+dashboard/screenshots/

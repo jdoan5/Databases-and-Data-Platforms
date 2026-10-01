@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tagline Dashboard</title>
+  <meta name="description" content="Tagline: website tags to trusted KPIs on Google Cloud. A static snapshot of the pipeline's BigQuery marts: KPIs, the purchase funnel, six attribution models, tag health, anomaly alerts, and what a run costs.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#2d545e">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232d545e'/%3E%3Cpath d='M9 22V13M16 22V9M23 22v-6' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <script>
+    // The portfolio site's theme mode (auto / light / dark), same localStorage key, so the choice carries across.
+    (() => {
+      try {
+        const stored = localStorage.getItem('theme-mode');
+        const mode = ['auto', 'light', 'dark'].includes(stored) ? stored : 'auto';
+        const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme', mode === 'auto' ? (dark ? 'dark' : 'light') : mode);
+        document.documentElement.setAttribute('data-theme-mode', mode);
+      } catch {
+        document.documentElement.setAttribute('data-theme-mode', 'auto');
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/dashboard.css">
+  <script type="module" src="assets/dashboard.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the dashboard</a>
+
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="#main">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="rgba(255,255,255,.14)"/><path d="M9 22V13M16 22V9M23 22v-6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        Tagline
+      </a>
+      <nav aria-label="Site">
+        <a href="https://jdoan5.github.io/projects-database.html">Projects</a>
+        <a href="https://github.com/jdoan5/Databases-and-Data-Platforms/tree/main/tagline">Code</a>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Theme mode: Auto. Activate to switch to Light.">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg>
+          <span class="theme-label">Auto</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <section class="hero" aria-labelledby="page-title">
+      <h1 id="page-title">Tagline: site tags to trusted KPIs</h1>
+      <p class="lead">A tagged storefront's GA4 events, taken through BigQuery, PySpark on Dataproc and Airflow to KPIs, multi-touch attribution and alerts that fire when the tags or the numbers go wrong. This page is a snapshot of the pipeline's marts, not a live connection: aggregates only, refreshed on demand from the marts.</p>
+      <p class="stamp" id="stamp" aria-live="polite">Loading the snapshot…</p>
+    </section>
+
+    <nav aria-label="Sections">
+      <ul class="toc">
+        <li><a href="#about">The two sources</a></li>
+        <li><a href="#kpis">KPIs</a></li>
+        <li><a href="#daily">Daily trend and alerts</a></li>
+        <li><a href="#funnel">Funnel</a></li>
+        <li><a href="#attribution">Attribution</a></li>
+        <li><a href="#tag-health">Tag health</a></li>
+        <li><a href="#campaigns">Site campaigns</a></li>
+        <li><a href="#cost">Run cost and time</a></li>
+      </ul>
+    </nav>
+
+    <div id="load-error" class="error-banner" role="alert" hidden></div>
+
+    <section class="block" id="about" aria-labelledby="about-h">
+      <header>
+        <h2 id="about-h">What Tagline is, and the two sources</h2>
+        <p>A small React store, Tagline Supply, pushes GA4's recommended ecommerce events against a written, machine-checked contract. The pipeline unions two GA4 exports, stitches sessions to signed-in people, deduplicates orders, credits each order across the buyer's journey under six models, and checks the tags again on the collected data.</p>
+      </header>
+      <ol class="pipeline-line" aria-label="The pipeline, in order">
+        <li>Tagged site (dataLayer + gtag)</li><li class="arrow" aria-hidden="true">→</li>
+        <li>GA4 daily export</li><li class="arrow" aria-hidden="true">→</li>
+        <li>BigQuery models and checks</li><li class="arrow" aria-hidden="true">→</li>
+        <li>PySpark attribution on Dataproc</li><li class="arrow" aria-hidden="true">→</li>
+        <li>Airflow DAG</li><li class="arrow" aria-hidden="true">→</li>
+        <li>Anomaly alerts</li>
+      </ol>
+      <div class="grid-2" id="sources"></div>
+    </section>
+
+    <section class="block" id="kpis" aria-labelledby="kpis-h">
+      <header>
+        <h2 id="kpis-h">KPIs</h2>
+        <p>Totals over each source's days, from <code>mart_kpi_daily</code>. Orders exclude purchases with no transaction id and no revenue; revenue is the items subtotal, without tax or shipping.</p>
+      </header>
+      <div class="grid-2" id="kpi-groups"></div>
+    </section>
+
+    <section class="block" id="daily" aria-labelledby="daily-h">
+      <header>
+        <h2 id="daily-h">Daily sessions and revenue, with the anomaly alerts</h2>
+        <p>The GA4 sample, day by day. The marks under the charts are the days the Stage 5 anomaly rules raised an alert (<code>kpi_alerts</code>). The site has one exported day, too few for the rules' history.</p>
+      </header>
+      <div class="card">
+        <figure id="daily-figure">
+          <figcaption>
+            <span class="title" id="daily-title">GA4 sample: sessions and revenue per day</span>
+            <span class="caption">Two charts on one time axis, each with its own scale. Hover, or focus the chart and use the arrow keys, to read a day.</span>
+          </figcaption>
+          <ul class="legend" id="daily-legend"></ul>
+          <div class="chart" id="daily-chart"></div>
+          <div class="visually-hidden" aria-live="polite" id="daily-live"></div>
+        </figure>
+        <details class="table-view" id="daily-table"><summary>Show the days as a table</summary></details>
+      </div>
+      <div class="card" id="backtest"></div>
+    </section>
+
+    <section class="block" id="funnel" aria-labelledby="funnel-h">
+      <header>
+        <h2 id="funnel-h">Funnel step rates</h2>
+        <p>A closed funnel per session: a session reaches a step when it has that step's event and every earlier one. Each bar is the share of the step before that went on to this one.</p>
+      </header>
+      <div class="card">
+        <figure id="funnel-figure">
+          <figcaption>
+            <span class="title">Step-to-step conversion, both sources</span>
+            <span class="caption" id="funnel-caption"></span>
+          </figcaption>
+          <ul class="legend" id="funnel-legend"></ul>
+          <div class="chart" id="funnel-chart"></div>
+        </figure>
+        <details class="table-view" id="funnel-table"><summary>Show the funnel as a table</summary></details>
+      </div>
+    </section>
+
+    <section class="block" id="attribution" aria-labelledby="attribution-h">
+      <header>
+        <h2 id="attribution-h">Attribution: who gets the credit under six models</h2>
+        <p>The Spark job credits each order across the buyer's sessions in the 30 days before it, under last click, last non-direct click, first click, linear, time decay (7-day half-life) and position-based (40/20/40). The weights sum to 1 per order and model (<a href="https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/spark/README.md#the-rules">the rules, in spark/README.md</a>).</p>
+      </header>
+      <div class="card">
+        <div class="table-wrap" id="heat-wrap"></div>
+        <div class="heat-scale" aria-hidden="true"><span>0%</span><span class="ramp"></span><span id="heat-max"></span></div>
+        <p class="note" id="heat-note"></p>
+      </div>
+      <div class="card">
+        <figure id="channel-figure">
+          <figcaption>
+            <span class="title" id="channel-title"></span>
+            <span class="caption">Share of the attributed revenue under each model. Pick another channel in the table above.</span>
+          </figcaption>
+          <div class="chart" id="channel-chart"></div>
+        </figure>
+        <div id="self-referral"></div>
+        <details class="table-view" id="channel-table"><summary>Show this channel as a table</summary></details>
+      </div>
+      <div class="card" id="site-attribution"></div>
+    </section>
+
+    <section class="block" id="tag-health" aria-labelledby="tag-health-h">
+      <header>
+        <h2 id="tag-health-h">Tag health</h2>
+        <p>The tags are watched at three points: before a release, on every event GA4 exported, and on the KPIs built from them.</p>
+      </header>
+      <div class="grid-3 layers" id="layers"></div>
+      <div class="card">
+        <figure id="health-figure">
+          <figcaption>
+            <span class="title">Collected-data checks by status, per source</span>
+            <span class="caption">One row per day, event and check in <code>mart_tag_health_daily</code>. The checks are generated from the tagging contract.</span>
+          </figcaption>
+          <ul class="legend" id="health-legend"></ul>
+          <div class="chart" id="health-chart"></div>
+        </figure>
+        <div class="table-wrap" id="health-kinds"></div>
+        <div id="health-expectations"></div>
+      </div>
+    </section>
+
+    <section class="block" id="campaigns" aria-labelledby="campaigns-h">
+      <header>
+        <h2 id="campaigns-h">Site campaigns <span class="badge synthetic">synthetic spend</span></h2>
+        <p>The site's sessions by landing campaign from <code>mart_campaign_daily</code>, joined to <code>campaign_costs</code>. The traffic is simulated and the spend is seeded, so ROAS here shows the join working, not a business result.</p>
+      </header>
+      <div class="card"><div class="table-wrap" id="campaign-table"></div><p class="note" id="campaign-note"></p></div>
+    </section>
+
+    <section class="block" id="cost" aria-labelledby="cost-h">
+      <header>
+        <h2 id="cost-h">What a daily run costs, and how long it takes</h2>
+        <p>Measured runs of the daily Airflow DAG, from the project's write-ups (linked under each figure). Not from the snapshot: BigQuery does not know them.</p>
+      </header>
+      <div class="grid-2">
+        <div class="card">
+          <figure id="wall-figure">
+            <figcaption><span class="title">Wall time per daily DAG run</span><span class="caption">Seconds, first task start to last task end.</span></figcaption>
+            <div class="chart" id="wall-chart"></div>
+          </figure>
+        </div>
+        <div class="card">
+          <figure id="price-figure">
+            <figcaption><span class="title">List price per daily DAG run</span><span class="caption">BigQuery on demand plus the Dataproc Serverless batch, before free tiers.</span></figcaption>
+            <div class="chart" id="price-chart"></div>
+          </figure>
+        </div>
+      </div>
+      <div class="card" id="cost-detail"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap" id="footer"></div>
+  </footer>
+</body>
+</html>

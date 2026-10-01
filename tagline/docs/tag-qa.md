@@ -221,7 +221,11 @@ parser, that file joined its path filter. It needs no browser, and a gtag.js dow
 not hold up its answer. The funnel test, local-only until now, runs in
 the new workflow.
 
-Not verified from here: a run on GitHub's runners, and with it the browser CI uses. With `CI` set the config
+Verified since: the push of 2026-09-30 (16:30 UTC) ran the workflow on GitHub's runners, and the suite passed 46 of
+46 on Playwright's Chromium 153 (Chrome for Testing), 2 workers, in 1.2 min; `tagline-site` and `tagline-pipeline`
+passed on the same push. What follows was written before that run.
+
+Not verified from here at the time: a run on GitHub's runners, and with it the browser CI uses. With `CI` set the config
 leaves `channel` unset, so Playwright launches its own Chromium (the headless shell), which is not installed on
 this machine: a first version of this page said the suite had passed locally with `CI=1`, which that config
 cannot have done. What was run instead, after review: the committed config with `CI=1` and one change, `channel:

@@ -1,0 +1,156 @@
+name: "Tagline: tag or contract change"
+description: "Propose adding, changing or removing an event or parameter the Tagline site pushes, or a change to its consent or identity behaviour."
+title: "Tagline tag change: "
+labels: ["tagline", "tag-change"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A change to what the site pushes to the dataLayer is a change to the contract. It ships as one pull request that touches the [tagging plan](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/docs/tagging-plan.md), `tagging/events.schema.json` (with the version in its `$comment` bumped), and the builder with its unit test ([tagging plan §14](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/docs/tagging-plan.md#14-changing-the-contract)). Since Stage 5 the same pull request also updates the tag QA plan and its golden snapshots (`npm run tagqa:update`, with the golden diff reviewed; see [tag-qa.md](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/docs/tag-qa.md#golden-snapshots)).
+
+        A new required parameter also needs a column in `stg_events`: the tag-health checks are generated from the contract, and the generator fails without that column.
+
+        This form plans that pull request. Changes are triaged weekly with the [roadmap](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/ROADMAP.md#intake).
+  - type: dropdown
+    id: change_kind
+    attributes:
+      label: Kind of change
+      options:
+        - "Add a parameter to an existing event"
+        - "Change a parameter's allowed values or format"
+        - "Make a parameter required, or optional"
+        - "Add an event"
+        - "Remove or rename an event or parameter"
+        - "Change when an event fires, or when it must not"
+        - "Consent or identity (user_id) behaviour"
+    validations:
+      required: true
+  - type: dropdown
+    id: events
+    attributes:
+      label: Events
+      description: "Every event the change touches."
+      multiple: true
+      options:
+        - "page_view"
+        - "view_item_list"
+        - "select_item"
+        - "view_item"
+        - "add_to_cart"
+        - "remove_from_cart"
+        - "view_cart"
+        - "begin_checkout"
+        - "add_shipping_info"
+        - "add_payment_info"
+        - "purchase"
+        - "search"
+        - "login"
+        - "sign_up"
+        - "The user_id push"
+        - "The gtag consent commands"
+        - "A new event (name it under Parameters)"
+    validations:
+      required: true
+  - type: textarea
+    id: params
+    attributes:
+      label: Parameters
+      description: "For each parameter: name, type, required or not, allowed values or format, and an example. Names are snake_case, at most 40 characters; string values at most 100 (tagging plan §1)."
+      placeholder: "coupon: string, optional, on purchase only. The code the shopper entered, upper case, at most 100 characters. Example: FALL10"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: "The decision or report that needs it, and what breaks or stays blind without it."
+    validations:
+      required: true
+  - type: dropdown
+    id: plan_sections
+    attributes:
+      label: Tagging plan sections it touches
+      multiple: true
+      options:
+        - "§1 Naming rules"
+        - "§2 Push format"
+        - "§3 Events: when they fire"
+        - "§4 Parameters"
+        - "§5 The items[] array"
+        - "§6 Currency and value"
+        - "§7 Identity (user_id)"
+        - "§8 Consent (Consent Mode v2)"
+        - "§9 Personal data"
+        - "§10 Validation and the Tag Inspector"
+        - "§11 Optional GA4 forwarding"
+        - "§12 How this data is used later"
+        - "§13 Deviations from Google"
+        - "§14 Changing the contract"
+    validations:
+      required: true
+  - type: dropdown
+    id: goldens
+    attributes:
+      label: Golden snapshots it changes
+      description: "The tag QA journeys in `site/tagqa/plan.ts` whose golden dataLayer snapshot (`site/tagqa/golden/<journey>.json`) will change."
+      multiple: true
+      options:
+        - "purchase: browse, product, cart, checkout, purchase"
+        - "confirmation_revisit: Back, Forward and reload on the confirmation page"
+        - "search: results, no results, an email typed in, a results URL opened directly"
+        - "account: sign-up, sign-out, login, the same email in a second browser"
+        - "consent: accept, reload, reopen the banner and reject"
+        - "list_select: category list, select_item, links to the page already shown"
+        - "cart_edit: two products, then +, − and Remove"
+        - "two_orders: two orders in one visit"
+        - "shared_link: landing from a link with an email in its query string"
+        - "A new journey is needed"
+        - "Not sure"
+    validations:
+      required: true
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Does it break readers of the data?
+      description: "Breaking means it removes, renames or tightens something that the Stage 2 models, the tag-health checks or GA4 reports read (tagging plan §12). The answer proposes the contract version bump."
+      options:
+        - "Breaking: removes, renames or tightens something"
+        - "Additive: a new optional parameter or event"
+        - "Documentation or examples only"
+        - "Not sure"
+    validations:
+      required: true
+  - type: checkboxes
+    id: downstream
+    attributes:
+      label: Work you expect downstream
+      description: "Tick what applies. This helps size the change."
+      options:
+        - label: "A new column in stg_events for a required parameter"
+          required: false
+        - label: "A Stage 2 model or mart changes (and a full build follows it)"
+          required: false
+        - label: "An alert threshold changes (pipeline/monitoring.toml)"
+          required: false
+        - label: "The GA4 property needs a custom definition or a setting change"
+          required: false
+    validations:
+      required: false
+  - type: input
+    id: needed_by
+    attributes:
+      label: Needed by
+      description: "A date, and why that date."
+      placeholder: "2026-11-01: the coupon campaign starts"
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before you submit
+      description: "This repository is public. Leave out emails, names, account or user ids, webhook URLs, keys and cloud project ids."
+      options:
+        - label: "The new or changed values carry no personal data: no email, name, phone or address, raw or URL-encoded (tagging plan §1 and §9)."
+          required: true
+        - label: "Nothing in this issue identifies a person or gives access to a system."
+          required: true

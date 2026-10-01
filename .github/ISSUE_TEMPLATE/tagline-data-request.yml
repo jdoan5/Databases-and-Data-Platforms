@@ -1,0 +1,126 @@
+name: "Tagline: data request"
+description: "Ask Tagline's pipeline for a number, a table, a dashboard tile or an alert, and say which decision it informs."
+title: "Tagline data request: "
+labels: ["tagline", "data-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For [Tagline](https://github.com/jdoan5/Databases-and-Data-Platforms/tree/main/tagline) only. The other projects in this repository use a blank issue.
+
+        Requests are triaged weekly, on Mondays. Each one is scored with RICE and placed under Now, Next or Later in the [roadmap](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/ROADMAP.md#intake), and gets a reply within two working days of the triage. A request that names no decision is parked until it names one.
+
+        What the data is today: Google's GA4 Merchandise Store sample (obfuscated, 2020-11-01 to 2021-01-31), and the site's own GA4 export, which so far holds only **synthetic** traffic from the simulator. Campaign spend is synthetic in both.
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision this informs
+      description: "What will someone decide differently depending on the answer?"
+      placeholder: "Whether to move part of the retarget_q4 budget to newsletter_oct next month."
+    validations:
+      required: true
+  - type: dropdown
+    id: consumers
+    attributes:
+      label: Who uses the answer
+      description: "Everyone whose work changes with the answer. This is the request's reach."
+      multiple: true
+      options:
+        - "Analyst"
+        - "Marketing"
+        - "Product"
+        - "Engineering"
+        - "Someone else (say who in the question)"
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: What you need
+      description: "The question in one or two sentences."
+      placeholder: "Revenue credited to each campaign under last click and under position-based, per week, for orders with a complete 30-day lookback."
+    validations:
+      required: true
+  - type: textarea
+    id: metric
+    attributes:
+      label: Metric definition
+      description: "Name, numerator and denominator, grain, filters, and which orders count. If a definition in docs/data-model.md or a column of mart_kpi_daily already fits, name it."
+      placeholder: |
+        Name: checkout_to_purchase_rate
+        Numerator: sessions with a begin_checkout and an order (a purchase with a transaction_id)
+        Denominator: sessions with begin_checkout
+        Grain: day x source
+        Filters: real orders only (not is_zero_value_without_id); consent-denied orders are out (they have no session)
+        Attribution model, if it is revenue by channel: last click
+    validations:
+      required: true
+  - type: dropdown
+    id: closest_table
+    attributes:
+      label: Closest existing table
+      description: "The table that comes nearest to answering it today, if you know."
+      multiple: true
+      options:
+        - "mart_kpi_daily"
+        - "mart_funnel_daily"
+        - "mart_campaign_daily"
+        - "mart_attribution_daily"
+        - "fct_attribution"
+        - "mart_tag_health_daily"
+        - "kpi_alerts"
+        - "fct_orders"
+        - "fct_order_items"
+        - "fct_sessions"
+        - "Not sure"
+    validations:
+      required: false
+  - type: dropdown
+    id: sources
+    attributes:
+      label: Data source
+      multiple: true
+      options:
+        - "GA4 sample (Google Merchandise Store, obfuscated, 2020-11-01 to 2021-01-31)"
+        - "The site's own GA4 export (synthetic simulator traffic so far)"
+        - "A source Tagline does not have yet (describe it in the question)"
+    validations:
+      required: true
+  - type: dropdown
+    id: answer_form
+    attributes:
+      label: Form of the answer
+      options:
+        - "A one-off number or table, in this issue"
+        - "A new column or table in tagline_marts"
+        - "A tile on the dashboard"
+        - "An alert (a KPI or tag-health rule)"
+        - "Not sure"
+    validations:
+      required: false
+  - type: input
+    id: deadline
+    attributes:
+      label: Deadline
+      description: "A date, and what happens if the answer comes later."
+      placeholder: "2026-10-16: the Q4 budget review is that day"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: How you will know the answer is right
+      description: "A number it should reconcile to, or a check it should pass."
+      placeholder: "Revenue over all campaigns equals fct_orders for the same days, to the cent."
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before you submit
+      description: "This repository is public. Leave out emails, names, account or user ids, webhook URLs, keys and cloud project ids."
+      options:
+        - label: "I looked in the [roadmap](https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/ROADMAP.md) and the Tagline docs for an existing answer."
+          required: true
+        - label: "Nothing in this issue identifies a person or gives access to a system."
+          required: true

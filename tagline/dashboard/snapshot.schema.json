@@ -1,0 +1,464 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/dashboard/snapshot.schema.json",
+  "title": "Tagline dashboard snapshot",
+  "description": "What make dashboard-snapshot writes to data/snapshot.json and index.html reads: aggregates of the tagline_marts tables, stamped with when they were read and the date range of each source, plus the figures cited from the write-ups. No identifier of a person, device, session, order or event (tests/validate-snapshot.mjs checks that too).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "generator", "export_cost", "tables", "sources", "kpis", "daily", "alerts",
+               "funnel", "attribution", "tag_health", "campaigns", "cited"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_at": { "$ref": "#/$defs/timestamp" },
+    "generator": { "type": "string", "minLength": 1 },
+    "export_cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_jobs", "bytes_processed", "bytes_billed", "max_bytes_billed"],
+      "properties": {
+        "query_jobs": { "type": "integer", "minimum": 1 },
+        "bytes_processed": { "$ref": "#/$defs/count" },
+        "bytes_billed": { "$ref": "#/$defs/count" },
+        "max_bytes_billed": { "type": "integer", "minimum": 1, "maximum": 10000000000 }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "rows", "last_modified"],
+        "properties": {
+          "name": { "enum": ["mart_kpi_daily", "mart_funnel_daily", "mart_campaign_daily", "mart_attribution_daily", "mart_tag_health_daily", "kpi_alerts"] },
+          "rows": { "$ref": "#/$defs/count" },
+          "last_modified": { "$ref": "#/$defs/timestamp" }
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ga4_sample", "tagline_site"],
+      "properties": {
+        "ga4_sample": { "type": "object", "$ref": "#/$defs/source", "properties": { "synthetic": { "const": false } } },
+        "tagline_site": { "type": "object", "$ref": "#/$defs/source", "properties": { "synthetic": { "const": true } } }
+      }
+    },
+    "kpis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ga4_sample", "tagline_site"],
+      "properties": { "ga4_sample": { "$ref": "#/$defs/kpis" }, "tagline_site": { "$ref": "#/$defs/kpis" } }
+    },
+    "daily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ga4_sample", "tagline_site"],
+      "properties": {
+        "ga4_sample": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/day" } },
+        "tagline_site": { "type": "array", "items": { "$ref": "#/$defs/day" } }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "source_days", "by_rule", "by_severity", "by_source", "days"],
+      "properties": {
+        "total": { "$ref": "#/$defs/count" },
+        "source_days": { "$ref": "#/$defs/count" },
+        "by_rule": { "type": "object", "propertyNames": { "$ref": "#/$defs/rule" }, "additionalProperties": { "$ref": "#/$defs/count" } },
+        "by_severity": { "type": "object", "propertyNames": { "enum": ["warning", "critical"] }, "additionalProperties": { "$ref": "#/$defs/count" } },
+        "by_source": {
+          "type": "object", "additionalProperties": false, "required": ["ga4_sample", "tagline_site"],
+          "properties": { "ga4_sample": { "$ref": "#/$defs/count" }, "tagline_site": { "$ref": "#/$defs/count" } }
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["date", "source", "count", "critical", "warning", "max_severity", "items"],
+            "properties": {
+              "date": { "$ref": "#/$defs/date" },
+              "source": { "$ref": "#/$defs/source_key" },
+              "count": { "type": "integer", "minimum": 1 },
+              "critical": { "$ref": "#/$defs/count" },
+              "warning": { "$ref": "#/$defs/count" },
+              "max_severity": { "enum": ["warning", "critical"] },
+              "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["metric", "rule", "severity", "direction", "value", "expected"],
+                  "properties": {
+                    "metric": { "type": "string", "pattern": "^(tag_health\\.[a-z_]+\\.[a-z_]+:[A-Za-z_.\\[\\]]+|events\\.[a-z_]+|day|[a-z_]+)$" },
+                    "rule": { "$ref": "#/$defs/rule" },
+                    "severity": { "enum": ["warning", "critical"] },
+                    "direction": { "enum": ["up", "down", null] },
+                    "value": { "type": ["number", "null"] },
+                    "expected": { "type": ["number", "null"] }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "funnel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ga4_sample", "tagline_site"],
+      "properties": { "ga4_sample": { "$ref": "#/$defs/funnel" }, "tagline_site": { "$ref": "#/$defs/funnel" } }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["models", "ga4_sample", "tagline_site", "lookback"],
+      "properties": {
+        "models": { "const": ["last_click", "last_non_direct", "first_click", "linear", "time_decay", "position_based"] },
+        "ga4_sample": { "type": "object", "$ref": "#/$defs/attribution", "properties": { "scope": { "const": "complete-lookback orders" } } },
+        "tagline_site": { "$ref": "#/$defs/attribution" },
+        "lookback": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/source_key" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["complete_orders", "incomplete_orders", "complete_revenue_usd", "incomplete_revenue_usd"],
+            "properties": {
+              "complete_orders": { "type": "number", "minimum": 0 },
+              "incomplete_orders": { "type": "number", "minimum": 0 },
+              "complete_revenue_usd": { "$ref": "#/$defs/money" },
+              "incomplete_revenue_usd": { "$ref": "#/$defs/money" }
+            }
+          }
+        }
+      }
+    },
+    "tag_health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_versions", "by_source", "expectations"],
+      "properties": {
+        "contract_versions": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" } },
+        "by_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ga4_sample", "tagline_site"],
+          "properties": { "ga4_sample": { "$ref": "#/$defs/health" }, "tagline_site": { "$ref": "#/$defs/health" } }
+        },
+        "expectations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "expectation", "rows", "kinds"],
+            "properties": {
+              "source": { "$ref": "#/$defs/source_key" },
+              "expectation": { "type": "string", "minLength": 1, "maxLength": 600 },
+              "rows": { "type": "integer", "minimum": 1 },
+              "kinds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/check_kind" } }
+            }
+          }
+        }
+      }
+    },
+    "campaigns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tagline_site"],
+      "properties": {
+        "tagline_site": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["first_date", "last_date", "rows", "totals"],
+          "properties": {
+            "first_date": { "$ref": "#/$defs/date" },
+            "last_date": { "$ref": "#/$defs/date" },
+            "rows": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["channel", "sessions", "engaged_sessions", "orders", "revenue_usd", "cost_usd", "roas", "cost_per_order"],
+                "properties": {
+                  "channel": { "$ref": "#/$defs/channel" },
+                  "sessions": { "$ref": "#/$defs/count" },
+                  "engaged_sessions": { "$ref": "#/$defs/count" },
+                  "orders": { "$ref": "#/$defs/count" },
+                  "revenue_usd": { "$ref": "#/$defs/money" },
+                  "cost_usd": { "$ref": "#/$defs/money_or_null" },
+                  "roas": { "type": ["number", "null"], "minimum": 0 },
+                  "cost_per_order": { "$ref": "#/$defs/money_or_null" }
+                }
+              }
+            },
+            "totals": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sessions", "orders", "revenue_usd", "cost_usd", "paid_revenue_usd", "paid_roas"],
+              "properties": {
+                "sessions": { "$ref": "#/$defs/count" },
+                "orders": { "$ref": "#/$defs/count" },
+                "revenue_usd": { "$ref": "#/$defs/money" },
+                "cost_usd": { "$ref": "#/$defs/money" },
+                "paid_revenue_usd": { "$ref": "#/$defs/money" },
+                "paid_roas": { "type": ["number", "null"], "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cited": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pipeline_runs", "backtest", "tag_qa", "alert_history", "consent_denied_orders", "synthetic", "self_referral"],
+      "properties": {
+        "pipeline_runs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["note", "runs", "monthly", "builds", "builds_source"],
+          "properties": {
+            "note": { "type": "string" },
+            "runs": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["stage", "label", "wall_s", "bigquery_gib", "dcu_hours", "usd", "source"],
+                "properties": {
+                  "stage": { "type": "string", "pattern": "^Stage [1-6]$" },
+                  "label": { "type": "string" },
+                  "wall_s": { "type": "number", "exclusiveMinimum": 0 },
+                  "bigquery_gib": { "type": "number", "exclusiveMinimum": 0 },
+                  "dcu_hours": { "type": "number", "minimum": 0 },
+                  "usd": { "type": "number", "exclusiveMinimum": 0 },
+                  "source": { "$ref": "#/$defs/cited_source" }
+                }
+              }
+            },
+            "monthly": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["before_usd", "after_usd", "paid_before_usd", "paid_after_usd", "text", "source"],
+              "properties": {
+                "before_usd": { "$ref": "#/$defs/money" }, "after_usd": { "$ref": "#/$defs/money" },
+                "paid_before_usd": { "$ref": "#/$defs/money" }, "paid_after_usd": { "$ref": "#/$defs/money" },
+                "text": { "type": "string" }, "source": { "$ref": "#/$defs/cited_source" }
+              }
+            },
+            "builds": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["label", "stage4_gib", "stage5_gib"],
+                "properties": { "label": { "type": "string" }, "stage4_gib": { "type": "number" }, "stage5_gib": { "type": "number" } }
+              }
+            },
+            "builds_source": { "$ref": "#/$defs/cited_source" }
+          }
+        },
+        "backtest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "incidents", "problems", "noise_incidents", "judged", "source"],
+          "properties": {
+            "text": { "type": "string" },
+            "incidents": { "type": "integer" }, "problems": { "type": "integer" }, "noise_incidents": { "type": "integer" },
+            "judged": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["start", "end", "kind", "problem", "label"],
+                "properties": {
+                  "start": { "$ref": "#/$defs/date" }, "end": { "$ref": "#/$defs/date" },
+                  "kind": { "enum": ["signal", "noise"] }, "problem": { "type": ["integer", "null"] }, "label": { "type": "string" }
+                }
+              }
+            },
+            "source": { "$ref": "#/$defs/cited_source" }
+          }
+        },
+        "tag_qa": {
+          "type": "object", "additionalProperties": false,
+          "required": ["tests", "journeys", "rules", "mutations", "mutations_caught", "text", "source"],
+          "properties": {
+            "tests": { "type": "integer" }, "journeys": { "type": "integer" }, "rules": { "type": "integer" },
+            "mutations": { "type": "integer" }, "mutations_caught": { "type": "integer" },
+            "text": { "type": "string" }, "source": { "$ref": "#/$defs/cited_source" }
+          }
+        },
+        "alert_history": {
+          "type": "object", "additionalProperties": false, "required": ["min_judged_days", "text", "source"],
+          "properties": { "min_judged_days": { "type": "integer" }, "text": { "type": "string" }, "source": { "$ref": "#/$defs/cited_source" } }
+        },
+        "consent_denied_orders": { "$ref": "#/$defs/cited_text" },
+        "synthetic": { "$ref": "#/$defs/cited_text" },
+        "self_referral": {
+          "type": "object", "additionalProperties": false, "required": ["channel", "text", "source"],
+          "properties": { "channel": { "$ref": "#/$defs/channel" }, "text": { "type": "string" }, "source": { "$ref": "#/$defs/cited_source" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "date_or_null": { "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }] },
+    "timestamp": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "money": { "type": "number", "minimum": 0 },
+    "money_or_null": { "type": ["number", "null"], "minimum": 0 },
+    "rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "source_key": { "enum": ["ga4_sample", "tagline_site"] },
+    "rule": { "enum": ["mad", "floor", "contract_violation", "no_data", "vanished"] },
+    "check_kind": { "enum": ["required", "format", "value_math", "pii", "dedupe", "attribution"] },
+    "channel": { "type": "string", "minLength": 3, "maxLength": 200 },
+    "cited_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["doc", "url", "label"],
+      "properties": {
+        "doc": { "type": "string", "pattern": "^[A-Za-z0-9_./-]+\\.md(#[a-z0-9-]+)?$" },
+        "url": { "type": "string", "pattern": "^https://github\\.com/jdoan5/Databases-and-Data-Platforms/blob/main/tagline/" },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cited_text": {
+      "type": "object", "additionalProperties": false, "required": ["text", "source"],
+      "properties": { "text": { "type": "string", "minLength": 1 }, "source": { "$ref": "#/$defs/cited_source" } }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "short", "synthetic", "description", "first_date", "last_date", "days"],
+      "properties": {
+        "label": { "type": "string" }, "short": { "type": "string" }, "synthetic": { "type": "boolean" },
+        "description": { "type": "string" },
+        "first_date": { "$ref": "#/$defs/date_or_null" }, "last_date": { "$ref": "#/$defs/date_or_null" },
+        "days": { "$ref": "#/$defs/count" }
+      }
+    },
+    "kpis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_date", "last_date", "days", "sessions", "engaged_sessions", "converted_sessions", "add_to_cart_sessions",
+                   "checkout_sessions", "orders", "revenue_usd", "cookieless_orders", "events", "consented_events",
+                   "engaged_session_rate", "conversion_rate", "add_to_cart_rate", "aov_usd", "cookieless_order_share", "consent_accept_share"],
+      "properties": {
+        "first_date": { "$ref": "#/$defs/date" }, "last_date": { "$ref": "#/$defs/date" }, "days": { "type": "integer", "minimum": 1 },
+        "sessions": { "$ref": "#/$defs/count" }, "engaged_sessions": { "$ref": "#/$defs/count" },
+        "converted_sessions": { "$ref": "#/$defs/count" }, "add_to_cart_sessions": { "$ref": "#/$defs/count" },
+        "checkout_sessions": { "$ref": "#/$defs/count" }, "orders": { "$ref": "#/$defs/count" },
+        "revenue_usd": { "$ref": "#/$defs/money" }, "cookieless_orders": { "$ref": "#/$defs/count" },
+        "events": { "type": ["integer", "null"], "minimum": 0 }, "consented_events": { "type": ["integer", "null"], "minimum": 0 },
+        "engaged_session_rate": { "$ref": "#/$defs/rate" }, "conversion_rate": { "$ref": "#/$defs/rate" },
+        "add_to_cart_rate": { "$ref": "#/$defs/rate" }, "aov_usd": { "$ref": "#/$defs/money_or_null" },
+        "cookieless_order_share": { "$ref": "#/$defs/rate" }, "consent_accept_share": { "$ref": "#/$defs/rate" }
+      }
+    },
+    "day": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "sessions", "orders", "revenue_usd", "conversion_rate", "add_to_cart_rate", "checkout_to_purchase_rate"],
+      "properties": {
+        "date": { "$ref": "#/$defs/date" }, "sessions": { "$ref": "#/$defs/count" }, "orders": { "$ref": "#/$defs/count" },
+        "revenue_usd": { "$ref": "#/$defs/money_or_null" }, "conversion_rate": { "$ref": "#/$defs/rate" },
+        "add_to_cart_rate": { "$ref": "#/$defs/rate" }, "checkout_to_purchase_rate": { "$ref": "#/$defs/rate" }
+      }
+    },
+    "funnel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first_date", "last_date", "days", "sessions", "view_item", "add_to_cart", "begin_checkout", "purchase", "converted", "step_rates"],
+      "properties": {
+        "first_date": { "$ref": "#/$defs/date" }, "last_date": { "$ref": "#/$defs/date" }, "days": { "type": "integer", "minimum": 1 },
+        "sessions": { "$ref": "#/$defs/count" }, "view_item": { "$ref": "#/$defs/count" }, "add_to_cart": { "$ref": "#/$defs/count" },
+        "begin_checkout": { "$ref": "#/$defs/count" }, "purchase": { "$ref": "#/$defs/count" }, "converted": { "$ref": "#/$defs/count" },
+        "step_rates": {
+          "type": "object", "additionalProperties": false, "required": ["view_item", "add_to_cart", "begin_checkout", "purchase"],
+          "properties": {
+            "view_item": { "$ref": "#/$defs/rate" }, "add_to_cart": { "$ref": "#/$defs/rate" },
+            "begin_checkout": { "$ref": "#/$defs/rate" }, "purchase": { "$ref": "#/$defs/rate" }
+          }
+        }
+      }
+    },
+    "per_model_money": {
+      "type": "object", "additionalProperties": false,
+      "required": ["last_click", "last_non_direct", "first_click", "linear", "time_decay", "position_based"],
+      "properties": {
+        "last_click": { "$ref": "#/$defs/money" }, "last_non_direct": { "$ref": "#/$defs/money" }, "first_click": { "$ref": "#/$defs/money" },
+        "linear": { "$ref": "#/$defs/money" }, "time_decay": { "$ref": "#/$defs/money" }, "position_based": { "$ref": "#/$defs/money" }
+      }
+    },
+    "per_model_share": {
+      "type": "object", "additionalProperties": false,
+      "required": ["last_click", "last_non_direct", "first_click", "linear", "time_decay", "position_based"],
+      "properties": {
+        "last_click": { "$ref": "#/$defs/rate" }, "last_non_direct": { "$ref": "#/$defs/rate" }, "first_click": { "$ref": "#/$defs/rate" },
+        "linear": { "$ref": "#/$defs/rate" }, "time_decay": { "$ref": "#/$defs/rate" }, "position_based": { "$ref": "#/$defs/rate" }
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "channel_grain", "orders", "revenue_usd", "totals_by_model", "channels"],
+      "properties": {
+        "scope": { "type": "string" },
+        "channel_grain": { "enum": ["source / medium", "source / medium / campaign"] },
+        "orders": { "type": "number", "minimum": 0 },
+        "revenue_usd": { "$ref": "#/$defs/money" },
+        "totals_by_model": {
+          "type": "object",
+          "propertyNames": { "enum": ["last_click", "last_non_direct", "first_click", "linear", "time_decay", "position_based"] },
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["orders", "revenue_usd"],
+            "properties": { "orders": { "type": "number", "minimum": 0 }, "revenue_usd": { "$ref": "#/$defs/money" } }
+          }
+        },
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["channel", "other", "channels", "revenue_usd", "share"],
+            "properties": {
+              "channel": { "$ref": "#/$defs/channel" },
+              "other": { "type": "boolean" },
+              "channels": { "type": "integer", "minimum": 1 },
+              "revenue_usd": { "$ref": "#/$defs/per_model_money" },
+              "share": { "$ref": "#/$defs/per_model_share" }
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows", "pass", "expected", "violation", "violations", "first_date", "last_date", "days", "by_kind"],
+      "properties": {
+        "rows": { "$ref": "#/$defs/count" }, "pass": { "$ref": "#/$defs/count" }, "expected": { "$ref": "#/$defs/count" },
+        "violation": { "$ref": "#/$defs/count" }, "violations": { "$ref": "#/$defs/count" },
+        "first_date": { "$ref": "#/$defs/date" }, "last_date": { "$ref": "#/$defs/date" }, "days": { "$ref": "#/$defs/count" },
+        "by_kind": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["kind", "pass", "expected", "violation"],
+            "properties": {
+              "kind": { "$ref": "#/$defs/check_kind" }, "pass": { "$ref": "#/$defs/count" },
+              "expected": { "$ref": "#/$defs/count" }, "violation": { "$ref": "#/$defs/count" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

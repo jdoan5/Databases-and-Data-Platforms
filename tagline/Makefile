@@ -8,6 +8,7 @@
 #   make setup && make test && make reference && make build && make numbers
 #   make airflow-up && make airflow-check && make airflow-test && make airflow-down
 #   make alerts-backtest && make alerts                                   (Stage 5)
+#   make dashboard-snapshot && make dashboard-test && make dashboard-publish (Stage 6)
 
 SHELL := /bin/bash
 
@@ -263,3 +264,45 @@ EQ_ARGS ?=
 
 stage4-equivalence: ## LIVE: incremental build vs full build (sample day, site day, fixture days) in throwaway datasets; ~45 GiB, ~$0.30
 	$(BENCH) equivalence $(EQ_ARGS)
+
+# --- Stage 6: the static dashboard (dashboard/README.md) -----------------------------------------------------------
+
+# The owner's GitHub Pages checkout; dashboard-publish copies the page into $(PORTFOLIO_DIR)/tagline/ and nothing else.
+PORTFOLIO_DIR   ?= $(abspath ../../jdoan5.github.io)
+DASHBOARD       := dashboard
+DASHBOARD_FILES := index.html assets/dashboard.css assets/dashboard.js data/snapshot.json
+SHOTS           ?= $(DASHBOARD)/screenshots
+
+.PHONY: dashboard-snapshot dashboard-snapshot-dry dashboard-setup dashboard-test dashboard-serve dashboard-publish \
+        dashboard-test-published dashboard-screenshots
+
+dashboard-snapshot: ## LIVE (6 small queries, ~60 MiB billed): the marts -> dashboard/data/snapshot.json, then validate it
+	$(PIPELINE)/.venv/bin/python $(DASHBOARD)/export_snapshot.py
+	cd $(DASHBOARD) && node tests/validate-snapshot.mjs
+
+dashboard-snapshot-dry: ## dry-run the exporter's queries (free): the bytes each would process; writes nothing
+	$(PIPELINE)/.venv/bin/python $(DASHBOARD)/export_snapshot.py --dry-run
+
+dashboard-setup: ## npm ci in dashboard/: Playwright and Ajv for the tests (the page itself has no dependency)
+	cd $(DASHBOARD) && npm ci
+
+dashboard-test: ## the exporter's pytest, the snapshot against its JSON Schema, Playwright in Chrome at 1280 and 375 px
+	$(PIPELINE)/.venv/bin/python -m pytest -q -p no:cacheprovider $(DASHBOARD)/tests
+	cd $(DASHBOARD) && npm test
+
+dashboard-serve: ## serve the page at http://127.0.0.1:5190/ until Ctrl-C (it fetches its snapshot, so file:// will not do)
+	cd $(DASHBOARD) && node tests/serve.mjs 5190
+
+dashboard-publish: ## validate, then copy the page and snapshot into $(PORTFOLIO_DIR)/tagline/ (no commit, no push)
+	@test -d "$(PORTFOLIO_DIR)/.git" || { echo "PORTFOLIO_DIR=$(PORTFOLIO_DIR) is not a git checkout of the portfolio site"; exit 2; }
+	cd $(DASHBOARD) && node tests/validate-snapshot.mjs
+	@for f in $(DASHBOARD_FILES); do \
+	  mkdir -p "$(PORTFOLIO_DIR)/tagline/$$(dirname $$f)" && cp "$(DASHBOARD)/$$f" "$(PORTFOLIO_DIR)/tagline/$$f" && echo "  copied $$f"; \
+	done
+	@echo "published to $(PORTFOLIO_DIR)/tagline/, not committed; live at https://jdoan5.github.io/tagline/ once pushed"
+
+dashboard-test-published: ## the Playwright checks against the published copy in $(PORTFOLIO_DIR)/tagline/
+	cd $(DASHBOARD) && DASHBOARD_ROOT="$(PORTFOLIO_DIR)/tagline" npx playwright test
+
+dashboard-screenshots: ## 1600x900 screenshots, light and dark, into SHOTS (default dashboard/screenshots, gitignored)
+	cd $(DASHBOARD) && node screenshot.mjs $(abspath $(SHOTS))

@@ -264,13 +264,12 @@ which runs independent tasks (`stg_items` and `int_identity`, the nine checks) s
   batch below was pending; it now matches `tagline-daily` and listed it.
 - **Network.** Serverless batches run on the default network's `us-central1` subnet with internal
   IPs only (Private Google Access is on), and the one firewall rule they need is
-  `default-allow-internal` (all ports inside `10.128.0.0/9`). The project also still has the
+  `default-allow-internal` (all ports inside `10.128.0.0/9`), which is now the only rule. The
   default network's `default-allow-ssh` (tcp:22), `default-allow-rdp` (tcp:3389) and
-  `default-allow-icmp` open to `0.0.0.0/0`, with logging off. Nothing in Tagline uses them and the
-  project has no VM, so they expose nothing today, but they would expose any VM or Dataproc cluster
-  with an external IP created later (a Stage 4 experiment, say). **Recommended: delete all three**
-  (or, if SSH is ever needed, narrow it to IAP's range `35.235.240.0/20` and use `gcloud compute ssh
-  --tunnel-through-iap`). Stage 3 did not change them; that is the owner's call.
+  `default-allow-icmp`, open to `0.0.0.0/0`, were deleted on 2026-10-01: nothing in Tagline used them,
+  and they would have exposed any VM or Dataproc cluster with an external IP created later. A Spark run
+  afterwards succeeded. If SSH is ever needed, add a rule for IAP's range `35.235.240.0/20` and use
+  `gcloud compute ssh --tunnel-through-iap`.
 
 ---
 
@@ -606,18 +605,15 @@ account, TTL, labels) and every BigQuery job, which never depended on where Airf
   until the next good run. On the sample the inputs never change, so nothing differs in practice;
   with the site's export, read a red run as "attribution tables stale". Swapping both tables in at
   once (staging tables, then one multi-statement transaction) is left for when that matters.
-- **Leftovers in Cloud Storage** (fractions of a cent, not managed by the pipeline): the TTL-stopped
-  3.0 batch left its staged Parquet files under `.spark-bigquery-local-.../` in the Spark bucket
-  (1,577 objects, 2.8 MiB; the connector deletes them only after a completed load, and the bucket has
-  no lifecycle rule). The four 3.0 batches that completed deleted their staged files after their
-  loads: after the last DAG run the bucket held only `code/` and that one old prefix. The first runtime
-  2.3 batch (a diagnostic one at 05:03 UTC, before the stand-in runs; `spark/README.md`) made
-  Dataproc create two buckets of its own in the project,
-  `dataproc-staging-us-central1-<project number>-...` (driver output; no lifecycle rule) and
-  `dataproc-temp-us-central1-<project number>-...`; runtime 3.0 uses neither, and nothing in the repo
-  runs 2.3. Cleaning up is the owner's call: delete that prefix, add a lifecycle rule to the Spark
-  bucket (delete objects under `.spark-bigquery-` after a day), and delete the two `dataproc-*`
-  buckets.
+- **Leftovers in Cloud Storage: cleaned up on 2026-10-01.** The TTL-stopped 3.0 batch had left its
+  staged Parquet files under `.spark-bigquery-local-.../` in the Spark bucket (1,577 objects,
+  2.8 MiB), and the first runtime 2.3 batch (a diagnostic one; `spark/README.md`) had made Dataproc
+  create two buckets of its own, `dataproc-staging-us-central1-<project number>-...` and
+  `dataproc-temp-us-central1-<project number>-...`. All three were deleted; the Spark bucket now holds
+  only `code/`, and a runtime 3.0 run afterwards succeeded and recreated neither bucket (3.0 uses
+  neither). The connector deletes its staged files only after a completed load, so a future stopped
+  batch can leave a prefix again; a lifecycle rule on the Spark bucket (delete objects under
+  `.spark-bigquery-` after a day) would handle that, and is not set.
 - **Only `airflow dags test` was run**, not a scheduler-driven run: the local scheduler would have
   started the most recent 10:00 UTC run as soon as the DAG was unpaused (see above). The components
   a scheduled run adds (LocalExecutor, the execution API behind the JWT secret) came up healthy but

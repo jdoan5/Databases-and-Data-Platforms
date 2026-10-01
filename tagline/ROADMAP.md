@@ -223,10 +223,12 @@ Total effort for Next: 15.5 person-days, plus the waits on items 1 and 15.
 
 These change no decision's input, so RICE does not fit them. Each takes minutes.
 
-- **Firewall.** The default network still has `default-allow-ssh`, `-rdp` and `-icmp` open to `0.0.0.0/0`. Nothing
-  uses them, and deleting them is recommended ([orchestration.md, Cost guards](docs/orchestration.md#cost-guards-and-retries)).
-- **Cloud Storage leftovers.** The TTL-stopped batch's staging prefix is still there (1,577 objects, 2.8 MiB, and
-  the Spark bucket has no lifecycle rule), along with the two `dataproc-*` buckets a runtime 2.3 batch created
+- **Firewall.** Done 2026-10-01: `default-allow-ssh`, `-rdp` and `-icmp` (open to `0.0.0.0/0`, used by nothing)
+  were deleted; only `default-allow-internal`, which Dataproc needs, remains. A Spark run afterwards succeeded
+  ([orchestration.md, Cost guards](docs/orchestration.md#cost-guards-and-retries)).
+- **Cloud Storage leftovers.** Done 2026-10-01: the TTL-stopped batch's staging prefix and the two `dataproc-*`
+  buckets a runtime 2.3 batch created were deleted; the Spark bucket holds only `code/`. Still open: a lifecycle
+  rule on the Spark bucket, so a future stopped batch can't leave files behind
   ([orchestration.md, Limitations](docs/orchestration.md#limitations)).
 
 ### Closed since the Stage 5 write-up

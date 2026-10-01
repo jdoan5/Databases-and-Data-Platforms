@@ -227,9 +227,9 @@ These change no decision's input, so RICE does not fit them. Each takes minutes.
   were deleted; only `default-allow-internal`, which Dataproc needs, remains. A Spark run afterwards succeeded
   ([orchestration.md, Cost guards](docs/orchestration.md#cost-guards-and-retries)).
 - **Cloud Storage leftovers.** Done 2026-10-01: the TTL-stopped batch's staging prefix and the two `dataproc-*`
-  buckets a runtime 2.3 batch created were deleted; the Spark bucket holds only `code/`. Still open: a lifecycle
-  rule on the Spark bucket, so a future stopped batch can't leave files behind
-  ([orchestration.md, Limitations](docs/orchestration.md#limitations)).
+  buckets a runtime 2.3 batch created were deleted; the Spark bucket holds only `code/`. The bucket now has a
+  lifecycle rule that deletes objects under `.spark-bigquery-` once they are a day old, so a future stopped batch
+  can't leave files behind for long ([orchestration.md, Limitations](docs/orchestration.md#limitations)).
 
 ### Closed since the Stage 5 write-up
 

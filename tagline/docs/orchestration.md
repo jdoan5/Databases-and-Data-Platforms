@@ -612,8 +612,9 @@ account, TTL, labels) and every BigQuery job, which never depended on where Airf
   `dataproc-temp-us-central1-<project number>-...`. All three were deleted; the Spark bucket now holds
   only `code/`, and a runtime 3.0 run afterwards succeeded and recreated neither bucket (3.0 uses
   neither). The connector deletes its staged files only after a completed load, so a future stopped
-  batch can leave a prefix again; a lifecycle rule on the Spark bucket (delete objects under
-  `.spark-bigquery-` after a day) would handle that, and is not set.
+  batch can leave a prefix again; since 2026-10-01 a lifecycle rule on the Spark bucket deletes objects
+  under `.spark-bigquery-` once they are a day old (Cloud Storage applies lifecycle rules
+  asynchronously, so removal can lag by up to a day). `code/` is not affected.
 - **Only `airflow dags test` was run**, not a scheduler-driven run: the local scheduler would have
   started the most recent 10:00 UTC run as soon as the DAG was unpaused (see above). The components
   a scheduled run adds (LocalExecutor, the execution API behind the JWT secret) came up healthy but

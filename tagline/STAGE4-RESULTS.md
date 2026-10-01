@@ -67,7 +67,7 @@ build), Spark executors (E6: 3.2× the cost and not faster, and results that dep
 connector's direct write (E8: not run, it would run an uncapped MERGE), unpartitioned output tables (E8: the
 mart loads about 0.9 s faster unpartitioned; kept partitioned for the layout), writing both attribution tables at
 once (E8: within noise). **Left alone, with numbers:** the storage billing model and the time-travel window (E5:
-the owner's call; recommendation below).
+the owner's call; recommendation below; the owner switched to physical billing on 2026-10-01).
 
 ---
 
@@ -352,7 +352,12 @@ All of it is inside BigQuery's free 10 GiB of storage, so the project pays $0 to
 - **Staging tables cannot expire**: they are the incremental path's history. Scratch datasets already expire, and
   the Stage 4 ones are deleted ([below](#what-was-left-behind)).
 
-No dataset's billing model, time-travel window or expiration was changed.
+No dataset's billing model, time-travel window or expiration was changed in Stage 4.
+
+**Update, 2026-10-01:** the owner switched all four datasets (`tagline_raw`, `tagline_staging`, `tagline_marts` and
+the GA4 export dataset) to physical billing with `ALTER SCHEMA … SET OPTIONS (storage_billing_model = 'PHYSICAL')`.
+The time-travel window is still 7 days, and the model can't be switched back before 2026-10-15. A dataset created
+fresh (say, `make build` in a new project) starts on logical billing.
 
 ---
 

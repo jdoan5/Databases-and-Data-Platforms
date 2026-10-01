@@ -205,7 +205,7 @@ Total effort for Next: 15.5 person-days, plus the waits on items 1 and 15.
 | 19 | Tag QA at phone size and in a second browser | [tag-qa.md, Limitations](docs/tag-qa.md#limitations): one browser, desktop size | D5 | 1 | 0.5 | 80% | 1 | 0.40 | Real traffic shows which devices matter |
 | 20 | A real account service for cross-device identity | [Honest limitations](README.md#honest-limitations): account ids are per browser; [tagging plan §13](docs/tagging-plan.md#13-deviations-from-google), last row; [tag-qa.md](docs/tag-qa.md#limitations): the second browser is simulated | D2, D1 | 2 | 2 | 50% | 5 | 0.40 | A backend with sign-in |
 | 21 | Attribute consent-denied purchases that carry a `user_id` to the person's consented sessions | [Stage 3 limitations](README.md#stage-3-limitations): "the rule would change nothing today" | D2, D1 | 2 | 0.5 | 50% | 1.5 | 0.33 | Item 1's answer |
-| 22 | Storage billing: switch from logical to physical | [STAGE4 E5](STAGE4-RESULTS.md#e5--storage-measured-recommended-nothing-switched): $0.072 against about $0.014 a month on the incremental path, $0 today (inside the free 10 GiB), and a switch that cannot be undone for 14 days; fail-safe bytes are invisible without `TABLE_STORAGE` access, an IAM change ([Not done](STAGE4-RESULTS.md#not-done-and-why)) | D6 | 1 | 0.25 | 80% | 1 | 0.20 | Storage passes the free 10 GiB |
+| 22 | ~~Storage billing: switch from logical to physical~~ **Done 2026-10-01** | [STAGE4 E5](STAGE4-RESULTS.md#e5--storage-measured-recommended-nothing-switched): $0.072 against about $0.014 a month on the incremental path, $0 today (inside the free 10 GiB), and a switch that cannot be undone for 14 days; fail-safe bytes are invisible without `TABLE_STORAGE` access, an IAM change ([Not done](STAGE4-RESULTS.md#not-done-and-why)) | D6 | 1 | 0.25 | 80% | 1 | 0.20 | Done ahead of its trigger ([Closed](#closed-since-the-stage-5-write-up)) |
 | 23 | Narrower checks on daily runs | [STAGE4, Not done](STAGE4-RESULTS.md#not-done-and-why): the checks are 71% of a daily run's bytes; row-local checks would read about 0.6 GiB a day less (about $0.11 a month at list price, $0 inside the free tier), and would narrow the correctness gate | D6, D4 | 2 | 0.25 | 80% | 2 | 0.20 | The BigQuery bill leaves the free tier, or volume grows |
 | 24 | Per-purpose consent toggles | [tagging plan §8](docs/tagging-plan.md#8-consent-consent-mode-v2), a known simplification; [tag-qa.md](docs/tag-qa.md#limitations): only `G100` and `G111` are tested | D7 | 1 | 0.5 | 80% | 2 | 0.20 | The store runs ads |
 | 25 | Server-side tagging, as a consideration, after a GTM container | [Honest limitations](README.md#honest-limitations): no GTM container, validation runs in the page; [tag-qa.md](docs/tag-qa.md#limitations): gtag.js is unpinned, and the GA4 layer needs the network; [tagging plan §9](docs/tagging-plan.md#9-personal-data) and [§11](docs/tagging-plan.md#11-optional-ga4-forwarding): the page URL is cleaned in the browser before gtag.js reads it | D5, D7 | 2 | 1 | 50% | 5 | 0.20 | A GTM container exists, and there is real traffic |
@@ -239,6 +239,12 @@ These change no decision's input, so RICE does not fit them. Each takes minutes.
   skipped, and `tagline-site` passed 67 unit tests. So the Chromium path is no longer unverified. The README's
   Stage 1 and Stage 5 limitations and [tag-qa.md](docs/tag-qa.md#ci), which still said otherwise, were corrected in
   the Stage 6 wrap-up.
+- **Storage billing switched to physical (item 22).** On 2026-10-01 the owner switched all four datasets
+  (`tagline_raw`, `tagline_staging`, `tagline_marts` and the GA4 export dataset) to physical billing, ahead of the
+  item's trigger. At this size the bill is $0 either way (inside the free 10 GiB); on the daily incremental path
+  physical is about 5× cheaper at list price ([STAGE4 E5](STAGE4-RESULTS.md#e5--storage-measured-recommended-nothing-switched)).
+  Time travel is now billed, so the 7-day window has a price; it was left at 7 days, since it is how a bad run is
+  undone. The model can't be switched back before 2026-10-15.
 
 ---
 

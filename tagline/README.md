@@ -918,7 +918,8 @@ median (min–max) at list price. The full write-up, with every experiment and e
   `mart_campaign_daily`, 1,030 rows of `mart_attribution_daily`, each in the last bits of a float).
 - **Storage** (E5): about $0.07 a month under logical billing, inside the free 10 GiB. Recommendation for the owner:
   keep logical billing and the 7-day time-travel window for now; physical billing would be about 5× cheaper on the
-  incremental path if storage ever passes the free tier. No billing model was changed.
+  incremental path if storage ever passes the free tier. The owner switched all four datasets to physical billing
+  on 2026-10-01 (no switching back before 2026-10-15); the time-travel window stays 7 days.
 
 ```bash
 make bench-test                                            # the harness's tests (no Google Cloud)
@@ -1207,7 +1208,7 @@ contract, SQL model, check or DAG.
   person-days, such as the §8 sign-off, flagging synthetic site rows in the tables, and a real alert channel. Next:
   8 items, such as real traffic and moving the Spark job off runtime 3.0 before its end of support on 2027-01-31.
   Later: 11 items, each with the trigger that brings it forward, such as an always-on scheduler (Cloud Composer),
-  the storage billing switch, and server-side tagging.
+  the storage billing switch (since done, 2026-10-01), and server-side tagging.
 - **What would change for a real store**, and a **decision log** of 12 decisions, each with the alternative it was
   chosen over and why.
 

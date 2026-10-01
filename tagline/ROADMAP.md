@@ -51,8 +51,8 @@ named "Tagline: …" and add the label `tagline`:
 
 GitHub adds a form's labels to an issue only if they already exist in the repository
 ([issue-form syntax](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms)).
-Of the labels these forms add, only `bug` exists today. `tagline`, `data-request` and `tag-change` are for the
-owner to create. Blank issues stay enabled for the rest of the repository.
+All four labels the forms add exist: `tagline`, `data-request` and `tag-change` (created 2026-10-01) and
+GitHub's default `bug`. Blank issues stay enabled for the rest of the repository.
 
 ### What a request must state
 

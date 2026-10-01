@@ -1255,8 +1255,6 @@ cloud resource.
   portfolio repository. Nothing schedules it, and the stamp at the top of the page says when it was read. A
   scheduled refresh would be one more DAG task plus a push this project does not make on the owner's behalf.
 - **The dashboard's tests are not in CI.** They run locally; no workflow runs them yet.
-- **Only one of the forms' labels exists.** GitHub skips a form's labels that do not exist in the repository, so
-  until the owner creates `tagline`, `data-request` and `tag-change`, only `bug` is applied.
 - **The roadmap's scores are one maintainer's estimates**, set on 2026-09-30. Reach counts decisions because there
   are no users to count, and the triage cadence and item 9's target date are proposals, not commitments anyone has
   made.
